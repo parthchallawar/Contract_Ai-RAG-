@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>PM: Commercial Agreement Ops View - LegalTech AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#137fec",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#101922",
+                    },
+                    fontFamily: {
+                        "display": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style type="text/tailwindcss">
+        @layer base {
+            body { font-family: 'Inter', sans-serif; }
+            .material-symbols-outlined { font-size: 20px; font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20; }
+            .material-symbols-outlined.fill-1 { font-variation-settings: 'FILL' 1; }
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-[#0d141b] dark:text-slate-100 antialiased transition-colors duration-200">
+<div class="flex h-screen flex-col overflow-hidden">
+<header class="flex h-16 items-center justify-between border-b border-solid border-[#e7edf3] dark:border-slate-800 bg-white dark:bg-[#1a2530] px-6 shrink-0">
+<div class="flex items-center gap-8">
+<div class="flex items-center gap-3">
+<div class="size-8 text-primary">
+<svg fill="currentColor" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path d="M44 11.2727C44 14.0109 39.8386 16.3957 33.69 17.6364C39.8386 18.877 44 21.2618 44 24C44 26.7382 39.8386 29.123 33.69 30.3636C39.8386 31.6043 44 33.9891 44 36.7273C44 40.7439 35.0457 44 24 44C12.9543 44 4 40.7439 4 36.7273C4 33.9891 8.16144 31.6043 14.31 30.3636C8.16144 29.123 4 26.7382 4 24C4 21.2618 8.16144 18.877 14.31 17.6364C8.16144 16.3957 4 14.0109 4 11.2727C4 7.25611 12.9543 4 24 4C35.0457 4 44 7.25611 44 11.2727Z"></path>
+</svg>
+</div>
+<h2 class="text-lg font-bold tracking-tight">LegalTech AI</h2>
+</div>
+<div class="hidden md:flex items-center gap-6">
+<a class="text-sm font-medium hover:text-primary transition-colors" href="#">Dashboard</a>
+<a class="text-sm font-bold border-b-2 border-primary py-5" href="#">Contracts</a>
+<a class="text-sm font-medium hover:text-primary transition-colors" href="#">Projects</a>
+<a class="text-sm font-medium hover:text-primary transition-colors" href="#">Insights</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative group">
+<input class="w-64 rounded-lg border-none bg-[#e7edf3] dark:bg-slate-800 px-4 py-2 text-sm focus:ring-2 focus:ring-primary transition-all" placeholder="Search insights..." type="text"/>
+</div>
+<button class="p-2 rounded-lg bg-[#e7edf3] dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<div class="h-8 w-8 rounded-full bg-slate-300 bg-cover bg-center" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDDXsyMUnM_Z0WD_xivIX_pQlX2R5sl570tTHXv4zvWgWhepTc2m6RukGYB-Z7U8l47fnWFysvhCJjKYw2nINF8v9mRv70MUlhQEZfipvsaHtT1CeWrn07F5_4BnbYnBzWGJmqkWjSBwzOBMDDNb4u7M771qR2D62T1dgK4etFQjw7Qq1-jNSaQdOeiFlPaCeYR8Br5CnEjhpOSLfzOunajcbUe5b3wBL5Zbf1nL7ipXcmn-k64YGM6ewWn40YBjLOxbpJiamW4vE4')"></div>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<aside class="w-64 border-r border-[#e7edf3] dark:border-slate-800 bg-white dark:bg-[#1a2530] flex flex-col p-4 shrink-0 overflow-y-auto">
+<div class="mb-6 px-3">
+<h3 class="text-xs font-bold uppercase tracking-wider text-[#4c739a] dark:text-slate-400">Current Agreement</h3>
+<h1 class="text-base font-bold text-[#0d141b] dark:text-white mt-1">Enterprise Suite V4</h1>
+<p class="text-xs text-[#4c739a] dark:text-slate-400">Comm. Services &amp; Licensing</p>
+</div>
+<nav class="space-y-1">
+<div class="pb-2 px-3">
+<p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">PM Focus Areas</p>
+</div>
+<a class="flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium bg-primary/10 text-primary" href="#">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined">assignment</span>
+                        Exhibit A: SOW
+                    </div>
+<span class="size-2 rounded-full bg-primary"></span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="#">
+<span class="material-symbols-outlined">key</span>
+                    Section 4: License Grant
+                </a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="#">
+<span class="material-symbols-outlined">analytics</span>
+                    Service Milestones
+                </a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="#">
+<span class="material-symbols-outlined">block</span>
+                    Usage Restrictions
+                </a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="#">
+<span class="material-symbols-outlined">calendar_clock</span>
+                    Delivery Schedule
+                </a>
+</nav>
+<div class="mt-auto border-t border-slate-100 dark:border-slate-800 pt-4">
+<div class="bg-primary/5 rounded-xl p-4 border border-primary/20">
+<p class="text-xs font-bold text-primary mb-1 uppercase">Contract Intelligence</p>
+<p class="text-xs text-slate-600 dark:text-slate-400">AI has identified 4 potential blockers in the SOW delivery dates.</p>
+<button class="mt-3 w-full py-2 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 transition-colors">Review Milestones</button>
+</div>
+</div>
+</aside>
+<main class="flex-1 flex flex-col bg-slate-50 dark:bg-background-dark overflow-hidden">
+<div class="px-6 py-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1a2530]">
+<div class="flex flex-col">
+<div class="flex items-center gap-2 mb-1">
+<span class="text-xs text-[#4c739a] font-medium">Repository</span>
+<span class="text-xs text-[#4c739a] font-medium">/</span>
+<span class="text-xs text-[#0d141b] dark:text-slate-200 font-bold">Commercial Services &amp; Licensing Agreement</span>
+</div>
+<h2 class="text-2xl font-black tracking-tight">PM: Operational Analysis View</h2>
+</div>
+<div class="flex gap-3">
+<button class="flex items-center gap-2 px-4 py-2 bg-[#e7edf3] dark:bg-slate-800 text-sm font-bold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+<span class="material-symbols-outlined">download</span>
+                        Export PDF
+                    </button>
+<button class="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-bold rounded-lg shadow-sm hover:bg-primary/90 transition-all">
+<span class="material-symbols-outlined">sync</span>
+                        Update Baseline
+                    </button>
+</div>
+</div>
+<div class="px-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1a2530]">
+<div class="flex gap-8">
+<button class="py-4 text-sm font-bold text-slate-500 hover:text-slate-700 border-b-2 border-transparent transition-all">Agreement Text</button>
+<button class="py-4 text-sm font-bold text-primary border-b-2 border-primary">Operational Insights</button>
+<button class="py-4 text-sm font-bold text-slate-500 hover:text-slate-700 border-b-2 border-transparent transition-all flex items-center gap-2">
+                        Dependencies
+                        <span class="bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full text-[10px]">4</span>
+</button>
+<button class="py-4 text-sm font-bold text-slate-500 hover:text-slate-700 border-b-2 border-transparent transition-all">Action Items <span class="ml-1 bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded-full text-[10px]">8</span></button>
+</div>
+</div>
+<div class="flex flex-1 overflow-hidden">
+<div class="flex-1 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-[#151e28] overflow-hidden">
+<div class="flex items-center justify-between px-6 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+<div class="flex items-center gap-3">
+<span class="text-xs font-bold uppercase text-slate-400">Current View:</span>
+<span class="text-xs font-bold text-primary px-2 py-1 bg-primary/5 rounded">Section 4.1 &amp; Exhibit A</span>
+</div>
+<div class="flex gap-2">
+<button class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded"><span class="material-symbols-outlined">search</span></button>
+<button class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded"><span class="material-symbols-outlined">zoom_in</span></button>
+<button class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded"><span class="material-symbols-outlined">zoom_out</span></button>
+</div>
+</div>
+<div class="flex-1 p-10 overflow-y-auto custom-scrollbar leading-relaxed">
+<div class="max-w-2xl mx-auto space-y-8">
+<div class="text-center pb-8 border-b border-slate-100 dark:border-slate-800">
+<h1 class="text-2xl font-black uppercase tracking-widest mb-2">Commercial Services &amp; Licensing Agreement</h1>
+<p class="text-xs text-slate-400">Ref ID: CSLA-2024-001 | Effective Date: Oct 01, 2024</p>
+</div>
+<section>
+<h3 class="text-lg font-bold mb-4 text-primary">4. LICENSE GRANT &amp; RESTRICTIONS</h3>
+<div class="space-y-4 text-sm text-slate-700 dark:text-slate-300">
+<p><strong class="text-slate-900 dark:text-white">4.1 Software License.</strong> Subject to the terms and conditions of this Agreement, Provider hereby grants to Customer a non-exclusive, non-transferable, non-sublicensable license during the Term to access and use the Software solely for Customer’s internal business purposes.</p>
+<div class="p-4 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 rounded-r-lg">
+<p class="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                                            "Customer shall not (i) reverse engineer, decompile, or disassemble the Software; (ii) use the Software to provide services to third parties; or (iii) exceed the concurrent user limit of 250 without prior written consent."
+                                        </p>
+</div>
+</div>
+</section>
+<section class="mt-12 bg-slate-50 dark:bg-slate-800/40 p-8 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+<h3 class="text-xl font-black mb-6 text-center uppercase tracking-tight">EXHIBIT A: STATEMENT OF WORK (SOW)</h3>
+<div class="space-y-6">
+<div>
+<h4 class="font-bold text-sm mb-2 uppercase text-slate-500">A.1 Scope of Services</h4>
+<p class="text-sm text-slate-700 dark:text-slate-300">Provider shall deploy the Enterprise Intelligence Module and provide integration services for the Customer's CRM environment. Deployment shall follow the phased approach detailed in Section A.3.</p>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div class="bg-white dark:bg-slate-900 p-3 rounded border border-slate-200 dark:border-slate-800">
+<p class="text-[10px] font-bold text-slate-400 uppercase">Phase 1 Delivery</p>
+<p class="text-sm font-bold">Initial Sandbox Provisioning</p>
+<p class="text-xs text-primary font-medium mt-1">Due: Oct 15, 2024</p>
+</div>
+<div class="bg-white dark:bg-slate-900 p-3 rounded border border-slate-200 dark:border-slate-800">
+<p class="text-[10px] font-bold text-slate-400 uppercase">Phase 2 Delivery</p>
+<p class="text-sm font-bold">API Integration Layer</p>
+<p class="text-xs text-primary font-medium mt-1">Due: Nov 10, 2024</p>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>
+</div>
+<div class="w-[480px] flex flex-col bg-slate-50 dark:bg-background-dark overflow-y-auto custom-scrollbar p-6 space-y-6">
+<section>
+<div class="flex items-center justify-between mb-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">event_available</span>
+<h3 class="font-bold text-base">SOW Milestones</h3>
+</div>
+<span class="text-[10px] font-bold text-slate-400 bg-slate-200 dark:bg-slate-800 px-2 py-1 rounded">EXHIBIT A</span>
+</div>
+<div class="space-y-3">
+<div class="bg-white dark:bg-[#1a2530] p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
+<div class="flex justify-between items-start">
+<div>
+<p class="text-sm font-bold">Sandbox Environment</p>
+<p class="text-[11px] text-slate-500">Ref: A.3.1 - Deployment</p>
+</div>
+<span class="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">ACTIVE</span>
+</div>
+<div class="mt-3 flex items-center justify-between text-xs">
+<span class="text-slate-500">Target Date: <span class="text-slate-900 dark:text-white font-medium">Oct 15, 2024</span></span>
+<span class="text-primary font-bold">T-Minus 3 Days</span>
+</div>
+</div>
+<div class="bg-white dark:bg-[#1a2530] p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
+<div class="flex justify-between items-start">
+<div>
+<p class="text-sm font-bold">API Integration Layer</p>
+<p class="text-[11px] text-slate-500">Ref: A.3.2 - Integration</p>
+</div>
+<span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold">QUEUED</span>
+</div>
+<div class="mt-3 flex items-center justify-between text-xs">
+<span class="text-slate-500">Target Date: <span class="text-slate-900 dark:text-white font-medium">Nov 10, 2024</span></span>
+</div>
+</div>
+</div>
+</section>
+<section>
+<div class="flex items-center justify-between mb-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">policy</span>
+<h3 class="font-bold text-base">Software Usage Controls</h3>
+</div>
+<span class="text-[10px] font-bold text-slate-400 bg-slate-200 dark:bg-slate-800 px-2 py-1 rounded">SECTION 4</span>
+</div>
+<div class="grid grid-cols-1 gap-3">
+<div class="bg-white dark:bg-[#1a2530] p-4 rounded-xl border-l-4 border-primary shadow-sm border border-slate-200 dark:border-slate-800">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-primary !text-lg">group</span>
+<p class="text-xs font-bold text-slate-500 uppercase">License Capacity</p>
+</div>
+<div class="flex justify-between items-end">
+<div>
+<p class="text-xl font-black">250 Users</p>
+<p class="text-[10px] text-slate-400">Concurrent User Limit (Section 4.1)</p>
+</div>
+<button class="text-[10px] font-bold text-primary">Setup Alert</button>
+</div>
+</div>
+<div class="bg-red-50 dark:bg-red-900/10 p-4 rounded-xl border border-red-200 dark:border-red-900/30">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-red-500 !text-lg">gavel</span>
+<p class="text-xs font-bold text-red-500 uppercase">Key Restrictions</p>
+</div>
+<ul class="space-y-2">
+<li class="flex items-start gap-2 text-xs text-slate-700 dark:text-slate-300">
+<span class="text-red-500 font-bold">•</span>
+                                        No reverse engineering or decompilation.
+                                    </li>
+<li class="flex items-start gap-2 text-xs text-slate-700 dark:text-slate-300">
+<span class="text-red-500 font-bold">•</span>
+                                        Usage restricted to internal business only.
+                                    </li>
+</ul>
+</div>
+</div>
+</section>
+<section>
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-primary">timeline</span>
+<h3 class="font-bold text-base">Operational Timeline</h3>
+</div>
+<div class="relative pl-6 space-y-6 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200 dark:before:bg-slate-800">
+<div class="relative">
+<div class="absolute -left-[19px] top-1 size-3 rounded-full bg-green-500 ring-4 ring-white dark:ring-background-dark"></div>
+<p class="text-xs font-bold">Contract Execution</p>
+<p class="text-[11px] text-slate-500">October 01, 2024 (Completed)</p>
+</div>
+<div class="relative">
+<div class="absolute -left-[19px] top-1 size-3 rounded-full bg-primary ring-4 ring-white dark:ring-background-dark"></div>
+<p class="text-xs font-bold">Phase 1 Delivery</p>
+<p class="text-[11px] text-slate-500">October 15, 2024</p>
+</div>
+<div class="relative">
+<div class="absolute -left-[19px] top-1 size-3 rounded-full bg-slate-300 dark:bg-slate-700 ring-4 ring-white dark:ring-background-dark"></div>
+<p class="text-xs font-bold">Phase 2 Delivery</p>
+<p class="text-[11px] text-slate-500">November 10, 2024</p>
+</div>
+<div class="relative">
+<div class="absolute -left-[19px] top-1 size-3 rounded-full bg-slate-300 dark:bg-slate-700 ring-4 ring-white dark:ring-background-dark"></div>
+<p class="text-xs font-bold">Final Acceptance (Go-Live)</p>
+<p class="text-[11px] text-slate-500">December 01, 2024</p>
+</div>
+</div>
+</section>
+<section class="mt-4 pb-8">
+<div class="flex items-center justify-between mb-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">playlist_add_check</span>
+<h3 class="font-bold text-base">PM Tasks</h3>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex items-center gap-3 bg-white dark:bg-[#1a2530] p-3 rounded-xl border border-slate-200 dark:border-slate-800 group cursor-pointer hover:border-primary transition-colors">
+<div class="size-5 rounded border-2 border-slate-200 dark:border-slate-700 flex items-center justify-center text-transparent group-hover:text-primary transition-colors">
+<span class="material-symbols-outlined !text-[14px]">check</span>
+</div>
+<div class="flex-1">
+<p class="text-xs font-medium">Confirm Sandbox IP Access</p>
+<p class="text-[10px] text-slate-400">Ref: Exhibit A.3.1</p>
+</div>
+</div>
+<div class="flex items-center gap-3 bg-white dark:bg-[#1a2530] p-3 rounded-xl border border-slate-200 dark:border-slate-800 group cursor-pointer hover:border-primary transition-colors">
+<div class="size-5 rounded border-2 border-slate-200 dark:border-slate-700 flex items-center justify-center text-transparent group-hover:text-primary transition-colors">
+<span class="material-symbols-outlined !text-[14px]">check</span>
+</div>
+<div class="flex-1">
+<p class="text-xs font-medium">Review User Limit (250) vs Q4 Forecast</p>
+<p class="text-[10px] text-slate-400">Ref: Section 4.1</p>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>
+</main>
+</div>
+</div>
+
+</body></html>

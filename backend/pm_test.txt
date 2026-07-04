@@ -1,0 +1,20 @@
+Project Alpha Software Development Agreement
+Effective Date: March 1, 2026
+
+1. Deliverables
+The Vendor shall deliver the Core API functionality by April 15, 2026. Status is currently in progress, about 30% done.
+The Mobile App frontend is pending and due May 1, 2026.
+
+2. Intellectual Property
+Customer Data remains exclusively owned by the Customer.
+SaaS Software is owned by the Provider. 
+Usage restrictions: No reverse engineering or resale allowed.
+
+3. Timelines
+Execution Date: March 1, 2026
+Phase 1 Delivery: April 15, 2026
+Final Acceptance: May 15, 2026
+
+4. Action Items
+Task: Review API endpoints. Assigned to: Sarah Jenkins.
+Task: Prepare testing environment. Assigned to: Bob Miller.

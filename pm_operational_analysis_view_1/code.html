@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>PM Operational Analysis View - LegalTech AI</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#137fec",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#101922",
+                    },
+                    fontFamily: {
+                        "display": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined { font-size: 20px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-[#0d141b] dark:text-slate-100 antialiased transition-colors duration-200">
+<div class="flex h-screen flex-col overflow-hidden">
+<!-- Top Navigation -->
+<header class="flex h-16 items-center justify-between border-b border-solid border-[#e7edf3] dark:border-slate-800 bg-white dark:bg-[#1a2530] px-6 shrink-0">
+<div class="flex items-center gap-8">
+<div class="flex items-center gap-3">
+<div class="size-8 text-primary">
+<svg fill="currentColor" viewbox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path d="M44 11.2727C44 14.0109 39.8386 16.3957 33.69 17.6364C39.8386 18.877 44 21.2618 44 24C44 26.7382 39.8386 29.123 33.69 30.3636C39.8386 31.6043 44 33.9891 44 36.7273C44 40.7439 35.0457 44 24 44C12.9543 44 4 40.7439 4 36.7273C4 33.9891 8.16144 31.6043 14.31 30.3636C8.16144 29.123 4 26.7382 4 24C4 21.2618 8.16144 18.877 14.31 17.6364C8.16144 16.3957 4 14.0109 4 11.2727C4 7.25611 12.9543 4 24 4C35.0457 4 44 7.25611 44 11.2727Z"></path>
+</svg>
+</div>
+<h2 class="text-lg font-bold tracking-tight">LegalTech AI</h2>
+</div>
+<div class="hidden md:flex items-center gap-6">
+<a class="text-sm font-medium hover:text-primary transition-colors" href="#">Dashboard</a>
+<a class="text-sm font-bold border-b-2 border-primary py-5" href="#">Contracts</a>
+<a class="text-sm font-medium hover:text-primary transition-colors" href="#">Projects</a>
+<a class="text-sm font-medium hover:text-primary transition-colors" href="#">Insights</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative group">
+<input class="w-64 rounded-lg border-none bg-[#e7edf3] dark:bg-slate-800 px-4 py-2 text-sm focus:ring-2 focus:ring-primary transition-all" placeholder="Search insights..." type="text"/>
+</div>
+<button class="p-2 rounded-lg bg-[#e7edf3] dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<div class="h-8 w-8 rounded-full bg-slate-300 bg-cover bg-center" data-alt="User profile avatar" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBcTDcw04fNHKdLFPpBN-HX3NpDVvnus12D98elLxerTv9MPOBQHo06TazRp5y9LpbvBA-7OELhwJJdFZuAM2C26HsVdJ91Lp0jro8kNyzTSDrd5pI3JyBPiRGKM6Yx756YPUL6VvzsusbMyapB7qeHedjWV0kb4aLnGh2I1uC_-QBkd8FJPzI4ZgcXIAcrO2QtDBUqltEtN89bDnI81HzHX1sQOaZL8oSJn9Gydn0_eJds_m31htRC-suQ3pyhFukbVGznFc_Pa5k')"></div>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<!-- Sidebar Navigation -->
+<aside class="w-64 border-r border-[#e7edf3] dark:border-slate-800 bg-white dark:bg-[#1a2530] flex flex-col p-4 shrink-0 overflow-y-auto">
+<div class="mb-6 px-3">
+<h3 class="text-xs font-bold uppercase tracking-wider text-[#4c739a] dark:text-slate-400">Current Project</h3>
+<h1 class="text-base font-bold text-[#0d141b] dark:text-white mt-1">Project Alpha</h1>
+<p class="text-xs text-[#4c739a] dark:text-slate-400">SaaS Master Agreement</p>
+</div>
+<nav class="space-y-1">
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="#">
+<span class="material-symbols-outlined">description</span>
+                        Contract View
+                    </a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold bg-primary/10 text-primary" href="#">
+<span class="material-symbols-outlined fill-1">insights</span>
+                        Operational Insights
+                    </a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="#">
+<span class="material-symbols-outlined">checklist</span>
+                        Deliverables
+                    </a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="#">
+<span class="material-symbols-outlined">gavel</span>
+                        IP Rights
+                    </a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="#">
+<span class="material-symbols-outlined">calendar_today</span>
+                        Timelines
+                    </a>
+</nav>
+<div class="mt-auto border-t border-slate-100 dark:border-slate-800 pt-4">
+<div class="bg-primary/5 rounded-xl p-4 border border-primary/20">
+<p class="text-xs font-bold text-primary mb-1 uppercase">AI Assistant</p>
+<p class="text-xs text-slate-600 dark:text-slate-400">Ready to extract new terms from Project Alpha updates.</p>
+<button class="mt-3 w-full py-2 bg-primary text-white text-xs font-bold rounded-lg">Run Analysis</button>
+</div>
+</div>
+</aside>
+<!-- Main Workspace -->
+<main class="flex-1 flex flex-col bg-slate-50 dark:bg-background-dark overflow-hidden">
+<!-- Workspace Header -->
+<div class="px-6 py-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1a2530]">
+<div class="flex flex-col">
+<div class="flex items-center gap-2 mb-1">
+<span class="text-xs text-[#4c739a] font-medium">Contracts</span>
+<span class="text-xs text-[#4c739a] font-medium">/</span>
+<span class="text-xs text-[#0d141b] dark:text-slate-200 font-bold">Operational Analysis View</span>
+</div>
+<h2 class="text-2xl font-black tracking-tight">PM Intelligence Dashboard</h2>
+</div>
+<div class="flex gap-3">
+<button class="flex items-center gap-2 px-4 py-2 bg-[#e7edf3] dark:bg-slate-800 text-sm font-bold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+<span class="material-symbols-outlined">ios_share</span>
+                            Export Analysis
+                        </button>
+<button class="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-bold rounded-lg shadow-sm hover:bg-primary/90 transition-all">
+<span class="material-symbols-outlined">add</span>
+                            Create Task
+                        </button>
+</div>
+</div>
+<!-- Tabs -->
+<div class="px-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1a2530]">
+<div class="flex gap-8">
+<button class="py-4 text-sm font-bold text-slate-500 hover:text-slate-700 border-b-2 border-transparent transition-all">Contract Text</button>
+<button class="py-4 text-sm font-bold text-primary border-b-2 border-primary">Operational Insights</button>
+<button class="py-4 text-sm font-bold text-slate-500 hover:text-slate-700 border-b-2 border-transparent transition-all">Action Items <span class="ml-1 bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded-full text-[10px]">12</span></button>
+</div>
+</div>
+<!-- Split Pane Workspace -->
+<div class="flex flex-1 overflow-hidden">
+<!-- Left: Contract Viewer -->
+<div class="flex-1 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-[#151e28] overflow-hidden">
+<div class="flex items-center justify-between px-6 py-3 border-b border-slate-100 dark:border-slate-800">
+<span class="text-xs font-bold uppercase text-slate-400">Section 4.2: Service Level Agreement</span>
+<div class="flex gap-2">
+<button class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded"><span class="material-symbols-outlined">zoom_in</span></button>
+<button class="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded"><span class="material-symbols-outlined">zoom_out</span></button>
+</div>
+</div>
+<div class="flex-1 p-8 overflow-y-auto custom-scrollbar leading-relaxed">
+<div class="max-w-2xl mx-auto space-y-6">
+<h3 class="text-xl font-bold">4.2 Deliverables and Acceptance</h3>
+<p class="text-slate-700 dark:text-slate-300">The Provider shall deliver the SaaS Platform features as specified in Exhibit A. All deliverables shall be subject to a 15-day acceptance period. During this time, the Customer may test for compliance with the Functional Specifications.</p>
+<div class="p-4 bg-primary/10 border-l-4 border-primary rounded-r-lg">
+<p class="text-sm italic text-slate-800 dark:text-slate-200">"Provider grants Customer a non-exclusive, worldwide license to use the Documentation and any training materials solely for Customer's internal business purposes during the Term."</p>
+</div>
+<h3 class="text-xl font-bold">5. Intellectual Property</h3>
+<p class="text-slate-700 dark:text-slate-300">5.1 Ownership. Customer shall own all rights, title, and interest in and to the Customer Data. Provider shall own all Intellectual Property Rights in the Services and any software used to provide the Services.</p>
+<p class="text-slate-700 dark:text-slate-300">5.2 Usage. No rights or licenses are granted to the Customer except as expressly set forth in this Agreement. Any modifications or derivative works created during the Term shall vest in the Provider.</p>
+<h3 class="text-xl font-bold">6. Term and Termination</h3>
+<p class="text-slate-700 dark:text-slate-300">The initial term of this Agreement shall be three (3) years. Either party may terminate this agreement with 90 days written notice prior to the end of the current term.</p>
+</div>
+</div>
+</div>
+<!-- Right: Operational Insights -->
+<div class="w-[480px] flex flex-col bg-slate-50 dark:bg-background-dark overflow-y-auto custom-scrollbar p-6 space-y-6">
+<!-- Section: Deliverables -->
+<section>
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-primary">inventory_2</span>
+<h3 class="font-bold text-base">Key Deliverables</h3>
+</div>
+<div class="space-y-3">
+<div class="bg-white dark:bg-[#1a2530] p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
+<div class="flex justify-between items-start">
+<p class="text-sm font-bold">SaaS Platform Core (Exhibit A)</p>
+<span class="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">IN PROGRESS</span>
+</div>
+<p class="text-xs text-slate-500 mt-1">Due: Oct 12, 2024</p>
+<div class="mt-3 flex items-center gap-2">
+<div class="h-1.5 flex-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[65%]"></div>
+</div>
+<span class="text-[10px] font-medium text-slate-500">65%</span>
+</div>
+</div>
+<div class="bg-white dark:bg-[#1a2530] p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
+<div class="flex justify-between items-start">
+<p class="text-sm font-bold">Technical Documentation</p>
+<span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold">PENDING</span>
+</div>
+<p class="text-xs text-slate-500 mt-1">Due: Nov 01, 2024</p>
+</div>
+</div>
+</section>
+<!-- Section: IP Usage Rights -->
+<section>
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-primary">verified_user</span>
+<h3 class="font-bold text-base">IP Usage Rights</h3>
+</div>
+<div class="grid grid-cols-2 gap-3">
+<div class="bg-white dark:bg-[#1a2530] p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+<p class="text-[10px] font-bold text-slate-400 uppercase">Customer Data</p>
+<p class="text-sm font-bold text-green-600 dark:text-green-400">Customer Owned</p>
+</div>
+<div class="bg-white dark:bg-[#1a2530] p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+<p class="text-[10px] font-bold text-slate-400 uppercase">SaaS Software</p>
+<p class="text-sm font-bold text-primary">Provider Owned</p>
+</div>
+<div class="bg-white dark:bg-[#1a2530] p-3 rounded-xl border border-slate-200 dark:border-slate-800 col-span-2">
+<p class="text-[10px] font-bold text-slate-400 uppercase">Usage Restrictions</p>
+<p class="text-xs mt-1 text-slate-700 dark:text-slate-300">Internal business use only. No resale rights granted.</p>
+</div>
+</div>
+</section>
+<!-- Section: Timelines -->
+<section>
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-primary">schedule</span>
+<h3 class="font-bold text-base">Project Timelines</h3>
+</div>
+<div class="relative pl-6 space-y-6 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200 dark:before:bg-slate-800">
+<div class="relative">
+<div class="absolute -left-[19px] top-1 size-3 rounded-full bg-primary ring-4 ring-white dark:ring-background-dark"></div>
+<p class="text-xs font-bold">Execution Date</p>
+<p class="text-[11px] text-slate-500">September 01, 2024</p>
+</div>
+<div class="relative">
+<div class="absolute -left-[19px] top-1 size-3 rounded-full bg-primary ring-4 ring-white dark:ring-background-dark"></div>
+<p class="text-xs font-bold">Phase 1 Delivery</p>
+<p class="text-[11px] text-slate-500">October 12, 2024</p>
+</div>
+<div class="relative">
+<div class="absolute -left-[19px] top-1 size-3 rounded-full bg-slate-300 dark:bg-slate-700 ring-4 ring-white dark:ring-background-dark"></div>
+<p class="text-xs font-bold">Final Acceptance</p>
+<p class="text-[11px] text-slate-500">November 15, 2024</p>
+</div>
+</div>
+</section>
+<!-- Section: Action Items -->
+<section class="mt-4 pb-8">
+<div class="flex items-center justify-between mb-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">fact_check</span>
+<h3 class="font-bold text-base">Action Items</h3>
+</div>
+<button class="text-[10px] font-bold text-primary hover:underline">View All</button>
+</div>
+<div class="space-y-2">
+<div class="flex items-center gap-3 bg-white dark:bg-[#1a2530] p-3 rounded-xl border border-slate-200 dark:border-slate-800 group cursor-pointer hover:border-primary transition-colors">
+<div class="size-5 rounded border-2 border-slate-200 dark:border-slate-700 flex items-center justify-center text-transparent group-hover:text-primary transition-colors">
+<span class="material-symbols-outlined !text-[14px]">check</span>
+</div>
+<div class="flex-1">
+<p class="text-xs font-medium">Update product roadmap for Q4 delivery</p>
+<p class="text-[10px] text-slate-400">Assigned: Sarah Jenkins</p>
+</div>
+</div>
+<div class="flex items-center gap-3 bg-white dark:bg-[#1a2530] p-3 rounded-xl border border-slate-200 dark:border-slate-800 group cursor-pointer hover:border-primary transition-colors">
+<div class="size-5 rounded border-2 border-slate-200 dark:border-slate-700 flex items-center justify-center text-transparent group-hover:text-primary transition-colors">
+<span class="material-symbols-outlined !text-[14px]">check</span>
+</div>
+<div class="flex-1">
+<p class="text-xs font-medium">Notify Eng of IP usage restrictions</p>
+<p class="text-[10px] text-slate-400">Assigned: Mark Thompson</p>
+</div>
+</div>
+<div class="flex items-center gap-3 bg-white dark:bg-[#1a2530] p-3 rounded-xl border border-slate-200 dark:border-slate-800 group cursor-pointer hover:border-primary transition-colors">
+<div class="size-5 rounded border-2 border-slate-200 dark:border-slate-700 flex items-center justify-center text-transparent group-hover:text-primary transition-colors">
+<span class="material-symbols-outlined !text-[14px]">check</span>
+</div>
+<div class="flex-1">
+<p class="text-xs font-medium">Schedule 90-day renewal review</p>
+<p class="text-[10px] text-slate-400">Assigned: Unassigned</p>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>
+</main>
+</div>
+</div>
+</body></html>

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Contract Upload &amp; Role Selection | ContractAI</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#137fec",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#101922",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-[#0d141b] dark:text-slate-50 min-h-screen">
+<div class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
+<div class="layout-container flex h-full grow flex-col">
+<!-- Global Navigation Bar -->
+<header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-[#e7edf3] dark:border-slate-800 px-10 py-3 bg-white dark:bg-[#1a242f]">
+<div class="flex items-center gap-8">
+<div class="flex items-center gap-4 text-primary">
+<div class="size-6">
+<svg fill="none" viewbox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path d="M24 45.8096C19.6865 45.8096 15.4698 44.5305 11.8832 42.134C8.29667 39.7376 5.50128 36.3314 3.85056 32.3462C2.19985 28.361 1.76794 23.9758 2.60947 19.7452C3.451 15.5145 5.52816 11.6284 8.57829 8.5783C11.6284 5.52817 15.5145 3.45101 19.7452 2.60948C23.9758 1.76795 28.361 2.19986 32.3462 3.85057C36.3314 5.50129 39.7376 8.29668 42.134 11.8833C44.5305 15.4698 45.8096 19.6865 45.8096 24L24 24L24 45.8096Z" fill="currentColor"></path>
+</svg>
+</div>
+<h2 class="text-[#0d141b] dark:text-slate-50 text-xl font-bold leading-tight tracking-[-0.015em]">ContractAI</h2>
+</div>
+<label class="flex flex-col min-w-40 !h-10 max-w-64">
+<div class="flex w-full flex-1 items-stretch rounded-lg h-full">
+<div class="text-[#4c739a] flex border-none bg-[#e7edf3] dark:bg-slate-800 items-center justify-center pl-4 rounded-l-lg border-r-0">
+<span class="material-symbols-outlined text-lg">search</span>
+</div>
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-[#0d141b] dark:text-slate-50 focus:outline-0 focus:ring-0 border-none bg-[#e7edf3] dark:bg-slate-800 focus:border-none h-full placeholder:text-[#4c739a] px-4 rounded-l-none border-l-0 pl-2 text-base font-normal leading-normal" placeholder="Search contracts..." value=""/>
+</div>
+</label>
+</div>
+<div class="flex flex-1 justify-end gap-8">
+<div class="flex items-center gap-9">
+<a class="text-[#0d141b] dark:text-slate-300 text-sm font-medium leading-normal hover:text-primary transition-colors" href="#">My Workspace</a>
+<a class="text-[#0d141b] dark:text-slate-300 text-sm font-medium leading-normal hover:text-primary transition-colors" href="#">Security</a>
+<div class="flex items-center gap-1 text-green-600 dark:text-green-400">
+<span class="material-symbols-outlined text-sm">verified_user</span>
+<span class="text-xs font-bold uppercase tracking-wider">Secure</span>
+</div>
+</div>
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 border border-slate-200 dark:border-slate-700" data-alt="User profile avatar placeholder" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDCagc-6fchpHjVvi70W5JJNDX_mhR1Z0m7nG9LrnAgiIyVtqBJHOLzwnub7hRTTDMQeh--aCyJtyhZFOYyQn4KuJzW8Q4g145TI9QCCvsBp67ZpzmRLMjB_74HtAB2uDUDHPnBjIQW7_XOEGdUAux6ce5A0wt31fjsZ572fOaKN06UZpRMcw5gKm7AJONcgil0D679Toqph2sobci57MlsjxrYebBQaODRX8BNbRWi3T1zIJsWn5wxhFTqJfSvdl-UKs3THzIK_K8");'></div>
+</div>
+</header>
+<!-- Main Content Container -->
+<main class="flex flex-1 justify-center py-12 px-4 md:px-20 lg:px-40">
+<div class="layout-content-container flex flex-col max-w-[840px] flex-1 gap-8">
+<!-- Page Heading -->
+<div class="flex flex-col gap-3 text-center md:text-left">
+<h1 class="text-[#0d141b] dark:text-slate-50 text-4xl md:text-5xl font-black leading-tight tracking-[-0.033em]">Intelligent Contract Analysis</h1>
+<p class="text-[#4c739a] dark:text-slate-400 text-lg font-normal leading-normal max-w-2xl">
+                            Upload your document and select your perspective. Our AI adapts its analysis to highlight risks and opportunities specific to your professional role.
+                        </p>
+</div>
+<!-- Role Selection Section -->
+<div class="bg-white dark:bg-[#1a242f] rounded-xl shadow-sm border border-[#e7edf3] dark:border-slate-800 p-6">
+<div class="flex items-center gap-2 px-1 pb-4">
+<span class="material-symbols-outlined text-primary">person_search</span>
+<h3 class="text-[#0d141b] dark:text-slate-50 text-lg font-bold leading-tight tracking-[-0.015em]">Select Your Role</h3>
+</div>
+<div class="flex px-1 py-1">
+<div class="flex h-12 flex-1 items-center justify-center rounded-xl bg-[#e7edf3] dark:bg-slate-800 p-1.5">
+<label class="flex cursor-pointer h-full grow items-center justify-center overflow-hidden rounded-lg px-2 has-[:checked]:bg-white dark:has-[:checked]:bg-primary has-[:checked]:shadow-sm has-[:checked]:text-[#0d141b] dark:has-[:checked]:text-white text-[#4c739a] dark:text-slate-400 text-sm font-semibold transition-all">
+<span class="truncate">Investor</span>
+<input class="invisible w-0" name="role-selector" type="radio" value="Investor"/>
+</label>
+<label class="flex cursor-pointer h-full grow items-center justify-center overflow-hidden rounded-lg px-2 has-[:checked]:bg-white dark:has-[:checked]:bg-primary has-[:checked]:shadow-sm has-[:checked]:text-[#0d141b] dark:has-[:checked]:text-white text-[#4c739a] dark:text-slate-400 text-sm font-semibold transition-all">
+<span class="truncate">Legal</span>
+<input checked="" class="invisible w-0" name="role-selector" type="radio" value="Legal"/>
+</label>
+<label class="flex cursor-pointer h-full grow items-center justify-center overflow-hidden rounded-lg px-2 has-[:checked]:bg-white dark:has-[:checked]:bg-primary has-[:checked]:shadow-sm has-[:checked]:text-[#0d141b] dark:has-[:checked]:text-white text-[#4c739a] dark:text-slate-400 text-sm font-semibold transition-all">
+<span class="truncate">PM</span>
+<input class="invisible w-0" name="role-selector" type="radio" value="PM"/>
+</label>
+<label class="flex cursor-pointer h-full grow items-center justify-center overflow-hidden rounded-lg px-2 has-[:checked]:bg-white dark:has-[:checked]:bg-primary has-[:checked]:shadow-sm has-[:checked]:text-[#0d141b] dark:has-[:checked]:text-white text-[#4c739a] dark:text-slate-400 text-sm font-semibold transition-all">
+<span class="truncate">HR</span>
+<input class="invisible w-0" name="role-selector" type="radio" value="HR"/>
+</label>
+</div>
+</div>
+<p class="px-1 mt-4 text-xs text-[#4c739a] dark:text-slate-500 italic">
+                            Analysis will focus on: Compliance, Liability, Governing Law, and Clause Nuance.
+                        </p>
+</div>
+<!-- Enhanced Dropzone -->
+<div class="flex flex-col">
+<div class="flex flex-col items-center gap-6 rounded-xl border-2 border-dashed border-[#cfdbe7] dark:border-slate-700 bg-white dark:bg-[#1a242f] px-6 py-16 hover:border-primary transition-colors cursor-pointer group">
+<div class="flex flex-col items-center gap-4">
+<div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-4xl">cloud_upload</span>
+</div>
+<div class="flex max-w-[480px] flex-col items-center gap-2">
+<p class="text-[#0d141b] dark:text-slate-50 text-xl font-bold leading-tight tracking-[-0.015em] text-center">Drag and drop your contract here</p>
+<p class="text-[#4c739a] dark:text-slate-400 text-sm font-normal leading-normal text-center">Supports PDF, DOCX (Max 50MB per file)</p>
+</div>
+</div>
+<div class="flex gap-3">
+<button class="flex min-w-[120px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-11 px-5 bg-primary text-white text-sm font-bold leading-normal tracking-[0.015em] hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
+<span class="truncate">Upload File</span>
+</button>
+<button class="flex min-w-[120px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-11 px-5 bg-[#e7edf3] dark:bg-slate-800 text-[#0d141b] dark:text-slate-50 text-sm font-bold leading-normal tracking-[0.015em] hover:bg-[#d1dae5] dark:hover:bg-slate-700 transition-all">
+<span class="truncate">Browse Local</span>
+</button>
+</div>
+</div>
+<!-- Privacy Notice -->
+<div class="flex items-center justify-center gap-2 mt-4 text-[#4c739a] dark:text-slate-500 text-xs font-medium">
+<span class="material-symbols-outlined text-sm">lock</span>
+<span>Files are encrypted end-to-end and SOC2 Type II compliant.</span>
+</div>
+</div>
+<!-- Recent Files List -->
+<div class="flex flex-col gap-4 mt-4">
+<div class="flex justify-between items-center px-1">
+<h3 class="text-[#0d141b] dark:text-slate-50 text-lg font-bold">Recent Documents</h3>
+<button class="text-primary text-sm font-semibold hover:underline">View All</button>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<!-- Recent File Card 1 -->
+<div class="flex items-center gap-4 p-4 rounded-xl bg-white dark:bg-[#1a242f] border border-[#e7edf3] dark:border-slate-800 hover:shadow-md transition-shadow">
+<div class="size-10 flex items-center justify-center bg-red-100 dark:bg-red-900/30 text-red-600 rounded-lg">
+<span class="material-symbols-outlined">picture_as_pdf</span>
+</div>
+<div class="flex flex-col flex-1 min-w-0">
+<p class="text-sm font-bold text-[#0d141b] dark:text-slate-50 truncate">Master_Services_Agreement_v4.pdf</p>
+<p class="text-xs text-[#4c739a] dark:text-slate-400">Modified 2h ago • 2.4 MB</p>
+</div>
+<span class="material-symbols-outlined text-[#4c739a] cursor-pointer hover:text-primary">more_vert</span>
+</div>
+<!-- Recent File Card 2 -->
+<div class="flex items-center gap-4 p-4 rounded-xl bg-white dark:bg-[#1a242f] border border-[#e7edf3] dark:border-slate-800 hover:shadow-md transition-shadow">
+<div class="size-10 flex items-center justify-center bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-lg">
+<span class="material-symbols-outlined">description</span>
+</div>
+<div class="flex flex-col flex-1 min-w-0">
+<p class="text-sm font-bold text-[#0d141b] dark:text-slate-50 truncate">NDA_Draft_Seed_Round.docx</p>
+<p class="text-xs text-[#4c739a] dark:text-slate-400">Modified 1d ago • 842 KB</p>
+</div>
+<span class="material-symbols-outlined text-[#4c739a] cursor-pointer hover:text-primary">more_vert</span>
+</div>
+</div>
+</div>
+<!-- Security Badge Area -->
+<div class="flex flex-wrap items-center justify-center gap-8 mt-8 opacity-60 grayscale hover:grayscale-0 transition-all py-6">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-3xl">security</span>
+<span class="text-sm font-bold tracking-tight uppercase">SOC2 Certified</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-3xl">gavel</span>
+<span class="text-sm font-bold tracking-tight uppercase">GDPR Compliant</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-3xl">key</span>
+<span class="text-sm font-bold tracking-tight uppercase">256-Bit AES</span>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer Small -->
+<footer class="py-10 px-10 border-t border-[#e7edf3] dark:border-slate-800 bg-white dark:bg-[#1a242f] mt-12">
+<div class="flex flex-col md:flex-row justify-between items-center gap-4 max-w-[1200px] mx-auto">
+<p class="text-[#4c739a] dark:text-slate-500 text-xs">© 2024 ContractAI Legal Systems. All rights reserved.</p>
+<div class="flex gap-6">
+<a class="text-[#4c739a] dark:text-slate-500 text-xs hover:text-primary transition-colors" href="#">Privacy Policy</a>
+<a class="text-[#4c739a] dark:text-slate-500 text-xs hover:text-primary transition-colors" href="#">Terms of Service</a>
+<a class="text-[#4c739a] dark:text-slate-500 text-xs hover:text-primary transition-colors" href="#">Help Center</a>
+</div>
+</div>
+</footer>
+</div>
+</div>
+</body></html>

@@ -1,0 +1,29 @@
+# Session/debug dumps (may contain captured env output / secrets)
+*-dump.json
+
+# Dependencies
+node_modules/
+
+# Environment variables (contains API keys — never commit)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build output
+dist/
+build/
