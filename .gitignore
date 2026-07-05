@@ -4,6 +4,9 @@
 # Dependencies
 node_modules/
 
+# Local embedding model cache (~25MB, re-downloaded on demand)
+backend/.models/
+
 # Environment variables (contains API keys — never commit)
 .env
 .env.local
@@ -16,6 +19,9 @@ npm-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Claude Code personal settings
+.claude/settings.local.json
 
 # IDE
 .vscode/

@@ -36,6 +36,13 @@ function switchPMTab(tab) {
     render();
 }
 
+// Phase 2: toggles a pre-rendered source-snippet row without a full re-render
+// (safe with the innerHTML render model — no state change, just a class flip).
+function toggleSourceRow(id) {
+    const el = document.getElementById(`src-${id}`);
+    if (el) el.classList.toggle('hidden');
+}
+
 
 // Utility Functions
 function createElement(tag, className = '', innerHTML = '') {
@@ -78,6 +85,29 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+// Phase 2: additive `calculations` field is absent on pre-Phase-2 analyses —
+// both helpers below render nothing in that case so old data still displays.
+function renderGroundingBadge(analysisObj) {
+    const grounding = analysisObj?.calculations?.grounding;
+    if (!grounding || grounding.total === 0) return '';
+    if (grounding.rate === 1) {
+        return `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 whitespace-nowrap">All ${grounding.total} verified in source</span>`;
+    }
+    return `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 whitespace-nowrap">${grounding.grounded} of ${grounding.total} verified · ${grounding.dropped} rejected</span>`;
+}
+
+function renderLgdBreakdownText(analysisObj) {
+    const lgd = analysisObj?.calculations?.lgd;
+    if (!lgd) return '';
+    if (!lgd.totalAmountOwed) {
+        return 'LGD undefined (no obligations found) — shown as 0%';
+    }
+    const lossStr = '$' + new Intl.NumberFormat().format(lgd.totalPotentialLoss);
+    const owedStr = '$' + new Intl.NumberFormat().format(lgd.totalAmountOwed);
+    const pctStr = Number.isFinite(lgd.rawPct) ? `${lgd.rawPct.toFixed(1)}%` : `${lgd.result}%`;
+    return `${lossStr} ÷ ${owedStr} = ${pctStr}`;
 }
 
 async function loadExtractedText() {
@@ -442,6 +472,7 @@ function renderInvestorView() {
                     <div class="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full mt-1">
                         <div class="bg-primary h-full rounded-full" style="width: ${lgdScore}%"></div>
                     </div>
+                    ${renderLgdBreakdownText(investorAnalysis) ? `<p class="text-[10px] text-[#4c739a] mt-1">${renderLgdBreakdownText(investorAnalysis)}</p>` : ''}
                     ${investorAnalysis.llmComments ? `<p class="text-[10px] text-amber-600 dark:text-amber-400 mt-2 font-medium italic">${investorAnalysis.llmComments}</p>` : ''}
                 </div>
                 <div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-900 border border-[#cfdbe7] dark:border-slate-800 shadow-sm">
@@ -484,19 +515,31 @@ function renderInvestorView() {
                             </div>
                         ` : `
                             <div class="p-4 max-h-[400px] overflow-y-auto custom-scrollbar">
-                                <h4 class="text-xs font-bold uppercase text-slate-400 tracking-widest mb-3">Financial Breakdown</h4>
+                                <div class="flex items-center justify-between gap-2 mb-3">
+                                    <h4 class="text-xs font-bold uppercase text-slate-400 tracking-widest">Financial Breakdown</h4>
+                                    ${renderGroundingBadge(analysis)}
+                                </div>
                                 <div class="space-y-4">
                                     ${analysis.numericFigures.risks.length > 0 ? `
                                         <div>
                                             <p class="text-[10px] font-bold text-red-500 uppercase mb-2">Identified Risks</p>
                                             <div class="space-y-2">
-                                                ${analysis.numericFigures.risks.map(r => `
-                                                    <div class="flex justify-between items-start p-2 bg-red-50 dark:bg-red-950/20 rounded border border-red-100 dark:border-red-900/30">
-                                                        <div class="min-w-0 pr-2">
-                                                            <p class="text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate">${r.raw}</p>
-                                                            <p class="text-[10px] text-slate-500 line-clamp-1">${r.reason}</p>
+                                                ${analysis.numericFigures.risks.map((r, idx) => `
+                                                    <div class="flex flex-col gap-1">
+                                                        <div class="flex justify-between items-start p-2 bg-red-50 dark:bg-red-950/20 rounded border border-red-100 dark:border-red-900/30">
+                                                            <div class="min-w-0 pr-2">
+                                                                <p class="text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate">
+                                                                    ${r.raw}
+                                                                    ${r.possibleDuplicate ? '<span class="ml-1 px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] font-bold align-middle whitespace-nowrap">possible duplicate</span>' : ''}
+                                                                </p>
+                                                                <p class="text-[10px] text-slate-500 line-clamp-1">${r.reason}</p>
+                                                            </div>
+                                                            <div class="flex items-center gap-1 shrink-0">
+                                                                <span class="text-[11px] font-black text-red-600 whitespace-nowrap">$${new Intl.NumberFormat().format(r.amount)}</span>
+                                                                ${r.sourceContext ? `<button class="text-slate-400 hover:text-primary" title="Show source" onclick="toggleSourceRow('risk-${idx}')"><span class="material-symbols-outlined text-[14px]">visibility</span></button>` : ''}
+                                                            </div>
                                                         </div>
-                                                        <span class="text-[11px] font-black text-red-600 whitespace-nowrap">$${new Intl.NumberFormat().format(r.amount)}</span>
+                                                        ${r.sourceContext ? `<div id="src-risk-${idx}" class="hidden px-2 py-1.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded text-[10px] text-slate-500 dark:text-slate-400 italic">"${escapeHtml(r.sourceContext)}"</div>` : ''}
                                                     </div>
                                                 `).join('')}
                                             </div>
@@ -507,13 +550,22 @@ function renderInvestorView() {
                                         <div>
                                             <p class="text-[10px] font-bold text-primary uppercase mb-2">Obligations</p>
                                             <div class="space-y-2">
-                                                ${analysis.numericFigures.obligations.map(o => `
-                                                    <div class="flex justify-between items-start p-2 bg-slate-50 dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-700">
-                                                        <div class="min-w-0 pr-2">
-                                                            <p class="text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate">${o.raw}</p>
-                                                            <p class="text-[10px] text-slate-500 line-clamp-1">${o.reason}</p>
+                                                ${analysis.numericFigures.obligations.map((o, idx) => `
+                                                    <div class="flex flex-col gap-1">
+                                                        <div class="flex justify-between items-start p-2 bg-slate-50 dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-700">
+                                                            <div class="min-w-0 pr-2">
+                                                                <p class="text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate">
+                                                                    ${o.raw}
+                                                                    ${o.possibleDuplicate ? '<span class="ml-1 px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] font-bold align-middle whitespace-nowrap">possible duplicate</span>' : ''}
+                                                                </p>
+                                                                <p class="text-[10px] text-slate-500 line-clamp-1">${o.reason}</p>
+                                                            </div>
+                                                            <div class="flex items-center gap-1 shrink-0">
+                                                                <span class="text-[11px] font-black text-primary whitespace-nowrap">$${new Intl.NumberFormat().format(o.amount)}</span>
+                                                                ${o.sourceContext ? `<button class="text-slate-400 hover:text-primary" title="Show source" onclick="toggleSourceRow('obligation-${idx}')"><span class="material-symbols-outlined text-[14px]">visibility</span></button>` : ''}
+                                                            </div>
                                                         </div>
-                                                        <span class="text-[11px] font-black text-primary whitespace-nowrap">$${new Intl.NumberFormat().format(o.amount)}</span>
+                                                        ${o.sourceContext ? `<div id="src-obligation-${idx}" class="hidden px-2 py-1.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded text-[10px] text-slate-500 dark:text-slate-400 italic">"${escapeHtml(o.sourceContext)}"</div>` : ''}
                                                     </div>
                                                 `).join('')}
                                             </div>
@@ -533,6 +585,7 @@ function renderInvestorView() {
                                             <span class="text-xs font-bold text-slate-300 dark:text-slate-600">LGD Percentage</span>
                                             <span class="text-sm font-black text-white dark:text-slate-900">${analysis.lgdScore}%</span>
                                         </div>
+                                        ${renderLgdBreakdownText(analysis) ? `<p class="text-[10px] text-slate-400 text-right">${renderLgdBreakdownText(analysis)}</p>` : ''}
                                     </div>
                                 </div>
                             </div>

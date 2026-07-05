@@ -522,22 +522,115 @@ function parseJsonResponse(content, fallback) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Phase 2: monetary candidate filtering — kill junk (dates, section numbers,
+// phone numbers) before it ever reaches the LLM.
+// ---------------------------------------------------------------------------
+
+const CURRENCY_MARKER_REGEX = /\$|USD|US\$|EUR|GBP|€|£/i;
+
+// Keyword list is intentionally broad; "indemnif" is a deliberate stem match
+// (indemnify/indemnification/indemnitee) rather than a whole-word entry.
+const MONEY_KEYWORDS = [
+  'fee', 'fees', 'payment', 'pay', 'price', 'penalty', 'penalties', 'liquidated', 'damages',
+  'cap', 'capped', 'indemnif', 'compensation', 'amount', 'sum', 'cost', 'costs', 'value',
+  'invoice', 'deposit', 'retainage', 'bond', 'insurance', 'per day', 'per week', 'per month',
+  'salary', 'rate', 'budget', 'fine', 'interest'
+];
+
+function hasMoneyKeywordNearby(context) {
+  const lower = context.toLowerCase();
+  return MONEY_KEYWORDS.some((kw) => {
+    if (kw.includes(' ')) return lower.includes(kw);
+    if (kw === 'indemnif') return /\bindemnif/.test(lower);
+    return new RegExp(`\\b${kw}\\b`).test(lower);
+  });
+}
+
+const MONTH_NAME_REGEX = /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i;
+const DATE_SLASH_REGEX = /\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/;
+const SECTION_PRECEDING_REGEX = /(sections?|articles?|clauses?|paragraphs?|subsections?|§|no\.|items?)\s*$/i;
+
+// Table-of-contents dot leaders ("....... 1613.   TAXES, FEES...") — a run of
+// 4+ dots anywhere just before the number is a reliable non-monetary signal;
+// real currency amounts are never preceded by dot leaders.
+const TOC_DOT_LEADER_REGEX = /(\.\s*){4,}$/;
+
+// Numbered heading style used throughout contracts, both TOC-aligned
+// ("10.   ALL RISK BUILDER'S RISK INSURANCE") and body-text single-spaced
+// ("8. CONTRACTOR SHALL...") — a bare number followed by a period, 1+
+// space(s), then an ALL-CAPS run is a clause/section heading, not an amount.
+// Requires 2+ consecutive caps specifically so it doesn't fire on ordinary
+// sentence starts ("$500. The Contractor..."), which are Title-case, not
+// ALL-CAPS ("The" breaks the run after its first letter).
+const HEADING_NUMBER_AFTER_REGEX = /^\.\s+[A-Z]{2,}/;
+
+// Document/form reference codes ("FMA - 9", "DGS - 30 - 084", "CO - 10.1")
+// chain a bare number after a hyphen. A real amount is never written
+// "- 500" without a currency marker, and $-marked amounts already bypass
+// this filter entirely, so this is a safe reject.
+const HYPHEN_CODE_PRECEDING_REGEX = /-\s*$/;
+
+// Returns true if `raw` should be rejected as non-monetary junk (dates,
+// section/clause numbers, TOC entries, numbered headings). Only called when
+// there's no currency symbol — an explicit symbol always overrides these.
+function isNonMonetaryArtifact(raw, matchIndex, normalizedText) {
+  const isBareYear = /^\d{4}$/.test(raw) && Number(raw) >= 1900 && Number(raw) <= 2099;
+  if (isBareYear) return true;
+
+  const narrowStart = Math.max(0, matchIndex - 20);
+  const narrowEnd = Math.min(normalizedText.length, matchIndex + raw.length + 20);
+  const before = normalizedText.slice(narrowStart, matchIndex);
+  const narrowWindow = normalizedText.slice(narrowStart, narrowEnd);
+  const after = normalizedText.slice(matchIndex + raw.length, matchIndex + raw.length + 20);
+
+  if (MONTH_NAME_REGEX.test(narrowWindow) || DATE_SLASH_REGEX.test(narrowWindow)) return true;
+  if (SECTION_PRECEDING_REGEX.test(before)) return true;
+  if (TOC_DOT_LEADER_REGEX.test(before)) return true;
+  if (HEADING_NUMBER_AFTER_REGEX.test(after)) return true;
+  if (HYPHEN_CODE_PRECEDING_REGEX.test(before.trimEnd())) return true;
+
+  return false;
+}
+
+// Emits a candidate only if it has money evidence (currency symbol OR a
+// monetary keyword in its ±70-char context) and doesn't look like a date,
+// section reference, or other non-monetary digit run. Returns candidates
+// with their char offset (`index`) plus scan stats for logging/telemetry.
 function extractMonetaryCandidates(text, limit = 160) {
-  if (!text) return [];
+  if (!text) return { candidates: [], stats: { scanned: 0, emitted: 0, filtered: 0 } };
   const normalizedText = text.replace(/(\d)\s+(?=\d)/g, '$1');
-  const regex = /(\$|USD|US\$|EUR|GBP|€|£)?\s*\d[\d,]*(?:\.\d+)?\s*(?:k|m|b|thousand|million|billion)?/gi;
+  // Negative lookahead on the k/m/b/thousand/etc. suffix stops it from
+  // grabbing the first letter of an unrelated following word (e.g. "2
+  // below" was matching as "2 b" before this — the amount-suffix and the
+  // start of "below" are indistinguishable without it).
+  const regex = /(\$|USD|US\$|EUR|GBP|€|£)?\s*\d[\d,]*(?:\.\d+)?\s*(?:(?:k|m|b|thousand|million|billion)(?![a-zA-Z]))?/gi;
   const candidates = [];
+  let scanned = 0;
   let match;
   while ((match = regex.exec(normalizedText)) !== null) {
     const raw = match[0].trim();
     if (!raw) continue;
+    scanned++;
+
+    const hasCurrencySymbol = CURRENCY_MARKER_REGEX.test(match[1] || '');
     const start = Math.max(0, match.index - 70);
     const end = Math.min(normalizedText.length, match.index + raw.length + 70);
     const context = normalizedText.slice(start, end).replace(/\s+/g, ' ').trim();
-    candidates.push({ raw, context });
+
+    if (!hasCurrencySymbol) {
+      if (isNonMonetaryArtifact(raw, match.index, normalizedText)) continue;
+      if (!hasMoneyKeywordNearby(context)) continue;
+    }
+
+    candidates.push({ raw, context, index: match.index });
     if (candidates.length >= limit) break;
   }
-  return candidates;
+
+  return {
+    candidates,
+    stats: { scanned, emitted: candidates.length, filtered: scanned - candidates.length }
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -623,6 +716,111 @@ async function callOpenRouter(messages, { expectJson = true, retries = 1, timeou
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Phase 2: grounding verification — reject hallucinated monetary items and
+// dedupe items the LLM restated against the same source occurrence.
+// ---------------------------------------------------------------------------
+
+function normalizeRawForMatch(raw) {
+  return String(raw || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function jaccardSimilarity(textA, textB) {
+  const tokensA = new Set(String(textA || '').toLowerCase().match(/[a-z0-9]+/g) || []);
+  const tokensB = new Set(String(textB || '').toLowerCase().match(/[a-z0-9]+/g) || []);
+  if (tokensA.size === 0 || tokensB.size === 0) return 0;
+  let intersection = 0;
+  for (const token of tokensA) {
+    if (tokensB.has(token)) intersection++;
+  }
+  const union = new Set([...tokensA, ...tokensB]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
+// Locates a candidate for `item` — exact raw match first, then amount
+// equality (handles the LLM reformatting "$50,000" as "50000 USD"). Only
+// considers candidates not already consumed by an earlier item so the same
+// source occurrence can't ground two items. If a match exists but was
+// already consumed, the item is a duplicate restatement rather than a
+// hallucination — callers use `reason` to tell the two apart.
+function findCandidateMatch(item, candidates, consumed) {
+  const itemRaw = normalizeRawForMatch(item.raw);
+  const itemAmount = Number(item.amount);
+
+  let idx = candidates.findIndex((c, i) => !consumed.has(i) && normalizeRawForMatch(c.raw) === itemRaw);
+  if (idx === -1 && Number.isFinite(itemAmount)) {
+    idx = candidates.findIndex((c, i) => {
+      if (consumed.has(i)) return false;
+      const amount = parseNumericAmount(c.raw);
+      return Number.isFinite(amount) && Math.abs(amount - itemAmount) < 0.01;
+    });
+  }
+  if (idx !== -1) return { idx, reason: null };
+
+  let anyIdx = candidates.findIndex((c) => normalizeRawForMatch(c.raw) === itemRaw);
+  if (anyIdx === -1 && Number.isFinite(itemAmount)) {
+    anyIdx = candidates.findIndex((c) => {
+      const amount = parseNumericAmount(c.raw);
+      return Number.isFinite(amount) && Math.abs(amount - itemAmount) < 0.01;
+    });
+  }
+  return { idx: -1, reason: anyIdx !== -1 ? 'duplicate' : 'hallucinated' };
+}
+
+function verifyMonetaryItemCategory(items, candidates) {
+  const consumed = new Set();
+  const grounded = [];
+  const dropped = [];
+
+  for (const item of items) {
+    const { idx, reason } = findCandidateMatch(item, candidates, consumed);
+    if (idx === -1) {
+      dropped.push({ ...item, reason: reason || 'hallucinated' });
+      continue;
+    }
+    consumed.add(idx);
+    const candidate = candidates[idx];
+    grounded.push({ ...item, sourceContext: candidate.context, sourceOffset: candidate.index });
+  }
+
+  // Soft duplicate flag: equal amounts + >60% shared context tokens. Never
+  // drops — avoids false-positive removal of two genuinely separate fees
+  // that happen to be described in similar language.
+  for (let i = 0; i < grounded.length; i++) {
+    for (let j = 0; j < i; j++) {
+      if (Math.abs((Number(grounded[i].amount) || 0) - (Number(grounded[j].amount) || 0)) < 0.01) {
+        if (jaccardSimilarity(grounded[i].sourceContext, grounded[j].sourceContext) > 0.6) {
+          grounded[i].possibleDuplicate = true;
+          break;
+        }
+      }
+    }
+  }
+
+  return { grounded, dropped };
+}
+
+// → { risks, obligations, droppedRisks, droppedObligations, grounding }
+// Risks and obligations are verified against `candidates` independently —
+// a candidate consumed by a risk item can still ground an obligation item.
+function verifyMonetaryItems(parsed, candidates) {
+  const risksResult = verifyMonetaryItemCategory(Array.isArray(parsed?.risks) ? parsed.risks : [], candidates);
+  const obligationsResult = verifyMonetaryItemCategory(Array.isArray(parsed?.obligations) ? parsed.obligations : [], candidates);
+
+  const total = risksResult.grounded.length + risksResult.dropped.length
+    + obligationsResult.grounded.length + obligationsResult.dropped.length;
+  const grounded = risksResult.grounded.length + obligationsResult.grounded.length;
+  const dropped = risksResult.dropped.length + obligationsResult.dropped.length;
+
+  return {
+    risks: risksResult.grounded,
+    obligations: obligationsResult.grounded,
+    droppedRisks: risksResult.dropped,
+    droppedObligations: obligationsResult.dropped,
+    grounding: { total, grounded, dropped, rate: total === 0 ? 1 : grounded / total }
+  };
+}
+
 async function selectMonetaryExposureWithLLM(candidates) {
   if (!OPENROUTER_API_KEY) return null;
   if (!Array.isArray(candidates) || candidates.length === 0) return null;
@@ -651,18 +849,26 @@ Only output the raw JSON object.`;
 
   if (!parsed) return null;
 
-  // Sum individual amounts locally for accuracy
-  const totalPotentialLoss = (Array.isArray(parsed.risks) ? parsed.risks : [])
-    .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  // Grounding: reject items that don't correspond to real source text, and
+  // dedupe restatements of the same occurrence. Sums are computed over
+  // grounded items only, so a hallucinated amount can't skew exposure/LGD.
+  const verified = verifyMonetaryItems(parsed, candidates);
 
-  const totalAmountOwed = (Array.isArray(parsed.obligations) ? parsed.obligations : [])
-    .reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+  if (verified.grounding.dropped > 0) {
+    const droppedDetail = [...verified.droppedRisks, ...verified.droppedObligations]
+      .map((d) => `${d.raw} (${d.reason})`).join(', ');
+    console.warn(`[monetary] Dropped ${verified.grounding.dropped} ungrounded item(s): ${droppedDetail}`);
+  }
+
+  const totalPotentialLoss = verified.risks.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  const totalAmountOwed = verified.obligations.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
 
   return {
     totalPotentialLoss,
     totalAmountOwed,
-    risks: Array.isArray(parsed.risks) ? parsed.risks : [],
-    obligations: Array.isArray(parsed.obligations) ? parsed.obligations : [],
+    risks: verified.risks,
+    obligations: verified.obligations,
+    grounding: verified.grounding,
     riskExplanation: parsed?.riskExplanation || '',
     comments: parsed?.comments || ''
   };
@@ -1095,11 +1301,11 @@ async function analyzeDocumentText(text, contract) {
   // basic parsing logic
   // extract numeric figures with explicit normalization for PDFs
   const numericFigures = extractNumericFigures(text);
-  const monetaryCandidates = extractMonetaryCandidates(text, 160);
-  
-  console.log(`${logPrefix} Found ${monetaryCandidates.length} monetary candidates. Calling LLM for selection...`);
+  const { candidates: monetaryCandidates, stats: monetaryStats } = extractMonetaryCandidates(text, 160);
+
+  console.log(`${logPrefix} Monetary candidates: scanned=${monetaryStats.scanned} emitted=${monetaryStats.emitted} filtered=${monetaryStats.filtered}. Calling LLM for selection...`);
   const llmExposure = await selectMonetaryExposureWithLLM(monetaryCandidates);
-  
+
   const totalExposureValue = llmExposure?.totalPotentialLoss || 0;
   const financialExposure = totalExposureValue > 0 ? formatNumber(totalExposureValue) : 'Not specified';
   const exposureSource = llmExposure ? 'llm-monetary-sum' : 'none';
@@ -1116,6 +1322,13 @@ async function analyzeDocumentText(text, contract) {
   // call no longer fails the whole analysis — it degrades to safe defaults
   // and is surfaced via analysisWarnings so the other sections still render.
   const analysisWarnings = [];
+
+  // Phase 2: surface hallucinated/ungrounded monetary items rejected before
+  // they could skew totalPotentialLoss/lgdScore.
+  const monetaryGrounding = llmExposure?.grounding || { total: 0, grounded: 0, dropped: 0, rate: 1 };
+  if (monetaryGrounding.dropped > 0) {
+    analysisWarnings.push(`${monetaryGrounding.dropped} monetary figure(s) from the AI were rejected (not found in source text).`);
+  }
 
   // Phase 1: which retrieval mode fed the RAG calls (additive field — the
   // frontend ignores it; the Phase 4 eval harness will read it).
@@ -1161,6 +1374,28 @@ async function analyzeDocumentText(text, contract) {
     retrieval: {
       mode: retrievalMode,
       chunkCount: contract.index ? contract.index.chunks.length : 0
+    },
+    calculations: {
+      exposure: {
+        formula: 'sum(grounded risk amounts)',
+        items: (llmExposure?.risks || []).map((r) => ({
+          raw: r.raw,
+          amount: r.amount,
+          sourceOffset: r.sourceOffset,
+          possibleDuplicate: !!r.possibleDuplicate
+        })),
+        total: totalExposureValue
+      },
+      lgd: {
+        formula: 'totalPotentialLoss / totalAmountOwed × 100, clamped 0–100',
+        totalPotentialLoss: llmExposure?.totalPotentialLoss || 0,
+        totalAmountOwed: llmExposure?.totalAmountOwed || 0,
+        rawPct: (llmExposure?.totalAmountOwed)
+          ? (llmExposure.totalPotentialLoss / llmExposure.totalAmountOwed) * 100
+          : null,
+        result: lgdScore
+      },
+      grounding: monetaryGrounding
     },
     overallRisk,
     lgdScore,
@@ -1302,11 +1537,23 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Legal Counsel Analysis server running on http://localhost:${PORT}`);
-  console.log(`Serving frontend from: ${path.join(__dirname, '../frontend')}`);
-  // Warm the local embedding model so the first upload doesn't pay the
-  // model-load latency. Non-blocking; failure degrades retrieval, never fatal.
-  retrieval.warmupEmbedder();
-});
+// Start server (skipped when required as a module, e.g. by test-calculations.js)
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Legal Counsel Analysis server running on http://localhost:${PORT}`);
+    console.log(`Serving frontend from: ${path.join(__dirname, '../frontend')}`);
+    // Warm the local embedding model so the first upload doesn't pay the
+    // model-load latency. Non-blocking; failure degrades retrieval, never fatal.
+    retrieval.warmupEmbedder();
+  });
+}
+
+module.exports = {
+  app,
+  parseNumericAmount,
+  extractMonetaryCandidates,
+  verifyMonetaryItems,
+  computeLossGivenDefaultScore,
+  clampScore,
+  normalizeRiskLevel
+};
