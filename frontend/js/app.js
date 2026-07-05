@@ -14,6 +14,7 @@ const state = {
     extractedTextError: '',
     showExtractedText: false,
     isExtractedTextLoading: false,
+    highlightQuote: null, // Phase 3: citation quote to highlight in the extracted-text panel
     // Tab states for each view
     investorTab: 'insights', // insights, financial
     legalTab: 'analysis', // analysis, versioning
@@ -134,6 +135,9 @@ async function loadExtractedText() {
 
 function toggleExtractedText() {
     state.showExtractedText = !state.showExtractedText;
+    if (!state.showExtractedText) {
+        state.highlightQuote = null;
+    }
     if (state.showExtractedText && !state.extractedText && !state.isExtractedTextLoading) {
         loadExtractedText();
         return;
@@ -141,11 +145,102 @@ function toggleExtractedText() {
     render();
 }
 
+// Phase 3: client-side mirror of the server's verifyQuote normalizer — must
+// stay behaviorally identical (lowercase, curly->straight quotes, collapse
+// whitespace) so a citation verified server-side is always findable here.
+function normalizeForQuoteMatch(str) {
+    return String(str || '')
+        .toLowerCase()
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'")
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function buildNormalizedOffsetMap(text) {
+    let normalized = '';
+    const offsetMap = [];
+    let i = 0;
+    while (i < text.length) {
+        const ch = text[i];
+        if (/\s/.test(ch)) {
+            if (normalized.length === 0 || normalized[normalized.length - 1] !== ' ') {
+                normalized += ' ';
+                offsetMap.push(i);
+            }
+            while (i < text.length && /\s/.test(text[i])) i++;
+            continue;
+        }
+        let c = ch.toLowerCase();
+        if (c === '“' || c === '”') c = '"';
+        if (c === '‘' || c === '’') c = "'";
+        normalized += c;
+        offsetMap.push(i);
+        i++;
+    }
+    return { normalized, offsetMap };
+}
+
+function findNormalizedOffset(quote, text) {
+    const normalizedQuote = normalizeForQuoteMatch(quote);
+    if (!normalizedQuote) return null;
+    const { normalized, offsetMap } = buildNormalizedOffsetMap(text);
+    const idx = normalized.indexOf(normalizedQuote);
+    if (idx === -1) return null;
+    return { start: offsetMap[idx], end: offsetMap[idx + normalizedQuote.length - 1] + 1 };
+}
+
+function findQuoteOffsetWithFallback(quote, text) {
+    if (!quote || !text) return null;
+    let result = findNormalizedOffset(quote, text);
+    if (result) return result;
+    const words = String(quote).trim().split(/\s+/).filter(Boolean);
+    if (words.length >= 8) {
+        result = findNormalizedOffset(words.slice(0, 8).join(' '), text);
+        if (result) return result;
+    }
+    return null;
+}
+
+// Phase 3: reveals a chat citation in the document panel — opens the
+// extracted-text panel (loading it if needed) and highlights the quote.
+async function revealCitation(msgIndex, citIndex) {
+    const msg = state.chatMessages[msgIndex];
+    const citation = msg && Array.isArray(msg.citations) ? msg.citations[citIndex] : null;
+    if (!citation) return;
+
+    state.showExtractedText = true;
+    state.highlightQuote = citation.quote;
+    render();
+
+    if (!state.extractedText && !state.isExtractedTextLoading) {
+        await loadExtractedText();
+    }
+
+    render();
+    document.getElementById('citation-highlight')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
 function renderExtractedTextPanel() {
     const hasText = Boolean(state.extractedText);
     const description = state.extractedTextError
         ? `<p class="text-xs text-red-600">${escapeHtml(state.extractedTextError)}</p>`
         : `<p class="text-xs text-slate-500">Use the extracted text to verify numeric figures and clause references.</p>`;
+
+    let bodyHtml;
+    if (!hasText) {
+        bodyHtml = escapeHtml('No extracted text available.');
+    } else {
+        const offset = state.highlightQuote ? findQuoteOffsetWithFallback(state.highlightQuote, state.extractedText) : null;
+        if (offset) {
+            const before = state.extractedText.slice(0, offset.start);
+            const match = state.extractedText.slice(offset.start, offset.end);
+            const after = state.extractedText.slice(offset.end);
+            bodyHtml = `${escapeHtml(before)}<mark id="citation-highlight" class="bg-amber-200 dark:bg-amber-700/60 rounded px-0.5">${escapeHtml(match)}</mark>${escapeHtml(after)}`;
+        } else {
+            bodyHtml = escapeHtml(state.extractedText);
+        }
+    }
 
     return `
         <div class="w-full mt-6">
@@ -167,7 +262,7 @@ function renderExtractedTextPanel() {
                                 <span class="text-xs text-slate-500">Loading extracted text...</span>
                             </div>
                         ` : `
-                            <pre class="p-4 text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap max-h-[320px] overflow-y-auto custom-scrollbar">${escapeHtml(hasText ? state.extractedText : 'No extracted text available.')}</pre>
+                            <pre class="p-4 text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap max-h-[320px] overflow-y-auto custom-scrollbar">${bodyHtml}</pre>
                         `}
                     </div>
                 ` : ''}
@@ -264,18 +359,103 @@ async function updateContractRole(contractId, role) {
     }
 }
 
-async function sendChatMessageAPI(contractId, message, role) {
+async function sendChatMessageAPI(contractId, message, role, history) {
     try {
         const response = await fetch(`${API_BASE}/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contractId, message, role: role || state.selectedRole })
+            body: JSON.stringify({ contractId, message, role: role || state.selectedRole, history })
         });
         return await response.json();
     } catch (error) {
         console.error('Error sending chat message:', error);
         throw error;
     }
+}
+
+// Phase 3: prior turns to send as conversation memory. Excludes the
+// just-pushed current user message (call this BEFORE pushing it), any
+// loading/streaming placeholder, and any assistant turn that reads as an
+// error — a failed prior turn is not useful context and would only confuse
+// follow-up retrieval/prompting. Truncated defensively; the server truncates
+// again and never trusts this input either.
+function buildChatHistoryPayload() {
+    return state.chatMessages
+        .filter((m) => !m.isLoading && !m.streaming)
+        .filter((m) => !(m.role === 'assistant' && typeof m.content === 'string'
+            && (m.content.startsWith('ERROR:') || m.content.startsWith('Sorry, I encountered an error'))))
+        .slice(-8)
+        .map((m) => ({ role: m.role, content: String(m.content || '').slice(0, 2000) }));
+}
+
+// Phase 3: streams a chat answer over SSE via fetch+reader (EventSource is
+// GET-only). Distinguishes two failure modes for the caller:
+//  - throws: nothing streamed yet (network error, non-200, or a server
+//    `error` event before any `token`) — caller should transparently fall
+//    back to the non-streaming endpoint.
+//  - returns { interrupted: true }: tokens already flowed and are already
+//    reflected in `onToken` calls — caller must NOT fall back (that would
+//    re-ask the question and confuse the partial answer already shown).
+async function streamChatMessageAPI(contractId, message, role, history, { onToken } = {}) {
+    const response = await fetch(`${API_BASE}/chat/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contractId, message, role: role || state.selectedRole, history })
+    });
+
+    if (!response.ok || !response.body) {
+        throw new Error(`Stream request failed: ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finalMessage = null;
+    let gotAnyToken = false;
+
+    const processLine = (line) => {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) return null;
+        const payload = trimmed.slice(5).trim();
+        if (!payload) return null;
+        try {
+            return JSON.parse(payload);
+        } catch (e) {
+            return null;
+        }
+    };
+
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+
+            for (const line of lines) {
+                const evt = processLine(line);
+                if (!evt) continue;
+
+                if (evt.type === 'token') {
+                    gotAnyToken = true;
+                    onToken(evt.text);
+                } else if (evt.type === 'done') {
+                    finalMessage = evt.message;
+                } else if (evt.type === 'error') {
+                    if (gotAnyToken) return { interrupted: true, errorMessage: evt.message };
+                    throw new Error(evt.message || 'Stream error');
+                }
+            }
+        }
+    } catch (readError) {
+        if (gotAnyToken) return { interrupted: true, errorMessage: 'Connection lost during response.' };
+        throw readError;
+    }
+
+    if (finalMessage) return { message: finalMessage };
+    if (gotAnyToken) return { interrupted: true, errorMessage: 'Response interrupted before completion.' };
+    throw new Error('Stream ended without a response.');
 }
 
 // Poll for analysis completion
@@ -1127,7 +1307,7 @@ function renderChatView() {
                                     <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2">Ask about this contract</h3>
                                     <p class="text-sm text-slate-500 dark:text-slate-400">I can help you understand clauses, risks, and implications across this contract.</p>
                                 </div>
-                            ` : state.chatMessages.map(msg => renderChatMessage(msg)).join('')}
+                            ` : state.chatMessages.map((msg, index) => renderChatMessage(msg, index)).join('')}
                         </div>
 
                         <div class="p-6 border-t border-slate-100 dark:border-slate-800">
@@ -1158,54 +1338,87 @@ function renderChatView() {
     `;
 }
 
-function renderChatMessage(msg) {
+function truncateForChip(str, maxLen = 60) {
+    const s = String(str || '');
+    return s.length > maxLen ? `${s.slice(0, maxLen)}…` : s;
+}
+
+// Phase 3: all model/user content is escaped before interpolation (fixes a
+// latent XSS/markup-break — this used to go straight into innerHTML), with
+// newlines rendered as <br> after escaping so multi-line streamed answers
+// display correctly.
+function renderChatMessage(msg, index) {
     if (msg.role === 'user') {
+        const contentHtml = escapeHtml(msg.content || '').replace(/\n/g, '<br>');
         return `
             <div class="flex flex-col items-end">
                 <div class="bg-primary text-white p-4 rounded-xl rounded-tr-none max-w-[85%] shadow-sm">
-                    <p class="text-sm">${msg.content}</p>
+                    <p class="text-sm">${contentHtml}</p>
                 </div>
                 <span class="text-[10px] text-slate-400 mt-1 mr-1">${new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
         `;
-    } else {
-        if (msg.isLoading) {
-            return `
-                <div class="flex flex-col items-start">
-                    <div class="bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 p-5 rounded-xl rounded-tl-none max-w-[95%] shadow-sm">
-                        <div class="flex items-center gap-3">
-                            <div class="loading-spinner"></div>
-                            <p class="text-sm text-slate-700 dark:text-slate-300">${msg.content}</p>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
+    }
+
+    // Streaming with no content yet: same "thinking" affordance the old
+    // isLoading state used. Once the first token lands, content is
+    // non-empty and falls through to the normal streaming render below.
+    if ((msg.isLoading) || (msg.streaming && !msg.content)) {
         return `
             <div class="flex flex-col items-start">
                 <div class="bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 p-5 rounded-xl rounded-tl-none max-w-[95%] shadow-sm">
-                    ${msg.citations && msg.citations.length > 0 ? `
-                        <div class="flex items-center gap-1 text-slate-400 text-xs mb-3">
-                            <span class="material-symbols-outlined text-xs">policy</span>
-                            <span>${msg.citations.join(', ')} cited</span>
-                        </div>
-                    ` : ''}
-                    <p class="text-sm text-slate-800 dark:text-slate-200 leading-relaxed mb-4">${msg.content}</p>
-                    ${msg.implications && msg.implications.length > 0 ? `
-                        <h4 class="text-xs font-bold text-slate-900 dark:text-white uppercase mb-2">Key Implications:</h4>
-                        <ul class="text-sm text-slate-700 dark:text-slate-300 space-y-2 list-disc pl-4">
-                            ${msg.implications.map(imp => `<li>${imp}</li>`).join('')}
-                        </ul>
-                    ` : ''}
-                </div>
-                <div class="mt-3 flex gap-2">
-                    <button class="flex items-center gap-1 px-2.5 py-1 rounded border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] text-slate-500 transition-colors" onclick="copyToClipboard('${msg.content.replace(/'/g, "\\'")}')">
-                        <span class="material-symbols-outlined text-sm">content_copy</span> Copy for Report
-                    </button>
+                    <div class="flex items-center gap-3">
+                        <div class="loading-spinner"></div>
+                        <p class="text-sm text-slate-700 dark:text-slate-300">Preparing response...</p>
+                    </div>
                 </div>
             </div>
         `;
     }
+
+    const contentHtml = escapeHtml(msg.content || '').replace(/\n/g, '<br>');
+    const citations = Array.isArray(msg.citations) ? msg.citations : [];
+    const implications = Array.isArray(msg.implications) ? msg.implications : [];
+
+    return `
+        <div class="flex flex-col items-start">
+            <div class="bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 p-5 rounded-xl rounded-tl-none max-w-[95%] shadow-sm">
+                <p class="text-sm text-slate-800 dark:text-slate-200 leading-relaxed mb-4"${msg.streaming ? ' id="streaming-msg-content"' : ''}>${contentHtml}${msg.streaming ? '<span class="inline-block w-1.5 h-4 bg-primary/60 ml-0.5 align-middle animate-pulse"></span>' : ''}</p>
+                ${citations.length > 0 ? `
+                    <div class="flex flex-wrap gap-1.5 mb-3">
+                        ${citations.map((c, ci) => `
+                            <button class="flex items-center gap-1 px-2 py-1 rounded-full bg-primary/10 hover:bg-primary/20 text-primary text-[10px] font-medium transition-colors" onclick="revealCitation(${index}, ${ci})" title="${escapeHtml(c.quote)}">
+                                <span class="material-symbols-outlined text-[11px]">policy</span>${escapeHtml(truncateForChip(c.quote))}
+                            </button>
+                        `).join('')}
+                    </div>
+                ` : ''}
+                ${implications.length > 0 ? `
+                    <h4 class="text-xs font-bold text-slate-900 dark:text-white uppercase mb-2">Key Implications:</h4>
+                    <ul class="text-sm text-slate-700 dark:text-slate-300 space-y-2 list-disc pl-4">
+                        ${implications.map(imp => `<li>${escapeHtml(imp)}</li>`).join('')}
+                    </ul>
+                ` : ''}
+                ${msg.interrupted ? `<p class="text-[11px] text-amber-600 dark:text-amber-400 mt-2 italic">Response interrupted before completion.</p>` : ''}
+            </div>
+            ${!msg.streaming ? `
+                <div class="mt-3 flex gap-2">
+                    <button class="flex items-center gap-1 px-2.5 py-1 rounded border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] text-slate-500 transition-colors" onclick="copyChatMessage(${index})">
+                        <span class="material-symbols-outlined text-sm">content_copy</span> Copy for Report
+                    </button>
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+// Immune to quotes/newlines/apostrophes in the message content — replaces
+// the old inline onclick="copyToClipboard('${content...}')" pattern, which
+// broke on multi-line streamed answers and unescaped apostrophes.
+function copyChatMessage(index) {
+    const msg = state.chatMessages[index];
+    if (!msg) return;
+    copyToClipboard(msg.content || '');
 }
 
 function renderLoadingView() {
@@ -1397,7 +1610,10 @@ async function handleSendChatMessage() {
 
     if (!message || !state.currentContract) return;
 
-    // Add user message
+    // Captured BEFORE pushing the current user message, so it isn't
+    // included in its own conversation history.
+    const history = buildChatHistoryPayload();
+
     state.chatMessages.push({
         role: 'user',
         content: message,
@@ -1407,33 +1623,57 @@ async function handleSendChatMessage() {
     input.value = '';
     render();
 
-    // Send to API
     const loadingMessage = {
         role: 'assistant',
-        content: 'Preparing response...',
+        content: '',
         timestamp: new Date().toISOString(),
-        isLoading: true
+        streaming: true
     };
     state.chatMessages.push(loadingMessage);
     render();
 
     try {
-        const response = await sendChatMessageAPI(state.currentContract.id, message, state.selectedRole);
-        Object.assign(loadingMessage, {
-            ...response,
-            timestamp: new Date().toISOString(),
-            isLoading: false
+        const result = await streamChatMessageAPI(state.currentContract.id, message, state.selectedRole, history, {
+            onToken: (text) => {
+                loadingMessage.content += text;
+                // Direct DOM write per token — no full render() per token.
+                // If the node is missing (user navigated away mid-stream),
+                // state still accumulates and the next render() catches up.
+                const node = document.getElementById('streaming-msg-content');
+                if (node) {
+                    node.innerHTML = escapeHtml(loadingMessage.content).replace(/\n/g, '<br>');
+                }
+            }
         });
+
+        if (result.message) {
+            Object.assign(loadingMessage, result.message, { streaming: false });
+        } else if (result.interrupted) {
+            Object.assign(loadingMessage, {
+                streaming: false,
+                interrupted: true,
+                citations: loadingMessage.citations || [],
+                implications: loadingMessage.implications || []
+            });
+        }
         render();
         document.getElementById('chatInput')?.focus();
-    } catch (error) {
-        console.error('Chat error:', error);
-        Object.assign(loadingMessage, {
-            role: 'assistant',
-            content: 'Sorry, I encountered an error. Please try again.',
-            timestamp: new Date().toISOString(),
-            isLoading: false
-        });
+    } catch (streamError) {
+        // Nothing streamed yet — transparently fall back to the
+        // non-streaming endpoint rather than surfacing an error.
+        console.warn('Streaming chat failed, falling back to non-streaming:', streamError);
+        try {
+            const response = await sendChatMessageAPI(state.currentContract.id, message, state.selectedRole, history);
+            Object.assign(loadingMessage, response, { timestamp: new Date().toISOString(), streaming: false });
+        } catch (fallbackError) {
+            console.error('Chat error:', fallbackError);
+            Object.assign(loadingMessage, {
+                role: 'assistant',
+                content: 'Sorry, I encountered an error. Please try again.',
+                timestamp: new Date().toISOString(),
+                streaming: false
+            });
+        }
         render();
     }
 }

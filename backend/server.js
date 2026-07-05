@@ -338,15 +338,72 @@ app.delete('/api/contracts/:id', (req, res) => {
 
 // Chat endpoint for AI assistant
 app.post('/api/chat', async (req, res) => {
-  const { contractId, message, role } = req.body;
+  const { contractId, message, role, history } = req.body;
 
   const contract = contracts.get(contractId);
   if (!contract) {
     return res.status(404).json({ error: 'Contract not found' });
   }
 
-  const response = await generateChatResponse(message, contract, role);
+  const response = await generateChatResponse(message, contract, role, history);
   res.json(response);
+});
+
+// Phase 3: streaming counterpart of /api/chat over Server-Sent Events.
+// EventSource is GET-only, so the frontend drives this with fetch(POST) +
+// response.body.getReader() instead. Kept alongside the non-streaming route
+// as a regression fallback (both share buildChatMessages/finalizeChatAnswer,
+// so their answers are identical modulo delivery).
+app.post('/api/chat/stream', async (req, res) => {
+  const { contractId, message, role, history } = req.body;
+
+  const contract = contracts.get(contractId);
+  if (!contract) {
+    return res.status(404).json({ error: 'Contract not found' });
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive'
+  });
+
+  const sendEvent = (evt) => {
+    if (res.writableEnded) return;
+    res.write(`data: ${JSON.stringify(evt)}\n\n`);
+  };
+
+  // Aborts the upstream OpenRouter fetch if the client disconnects mid-stream
+  // — no orphaned calls left running against a closed connection. Must use
+  // `res` here, not `req`: Express/Node fires `req`'s 'close' as soon as the
+  // request body finishes being read (i.e. almost immediately for a small
+  // JSON POST), long before the client actually disconnects. `res`'s
+  // 'close' correctly reflects the response connection closing; guarding on
+  // `!res.writableEnded` distinguishes a genuine mid-stream disconnect from
+  // the ordinary close that follows our own res.end() call.
+  const abortController = new AbortController();
+  res.on('close', () => {
+    if (!res.writableEnded) abortController.abort();
+  });
+
+  try {
+    const result = await generateChatResponseStream(message, contract, role, history, {
+      onToken: (text) => sendEvent({ type: 'token', text }),
+      signal: abortController.signal
+    });
+
+    if (result.failed) {
+      sendEvent({ type: 'error', message: result.errorMessage });
+      return res.end();
+    }
+
+    sendEvent({ type: 'done', message: result.message });
+    res.end();
+  } catch (err) {
+    console.error('Chat stream error:', err);
+    sendEvent({ type: 'error', message: 'An unexpected error occurred.' });
+    res.end();
+  }
 });
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
@@ -714,6 +771,115 @@ async function callOpenRouter(messages, { expectJson = true, retries = 1, timeou
   }
 
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3: streaming OpenRouter call (SSE) for the chat endpoint.
+// ---------------------------------------------------------------------------
+
+// Parses one chunk of raw upstream SSE bytes against a running `buffer`.
+// OpenRouter sends `data: {json}\n\n` lines terminated by `data: [DONE]`, and
+// a single fetch chunk can split a line mid-JSON — so we only ever parse
+// complete lines and carry the trailing partial line forward in `buffer`.
+// Pure/standalone so it's directly unit-testable.
+function parseSseChunk(buffer, chunkText) {
+  const combined = buffer + chunkText;
+  const lines = combined.split('\n');
+  const remainder = lines.pop() ?? '';
+  const events = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) continue;
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === '[DONE]') continue;
+    try {
+      events.push(JSON.parse(payload));
+    } catch (err) {
+      // Malformed/unexpectedly-split JSON — skip this line rather than throw.
+    }
+  }
+  return { events, buffer: remainder };
+}
+
+// Streams a chat completion, invoking `onToken(text)` per delta. Retry
+// semantics deliberately differ from callOpenRouter: a failure is only
+// retried if it happens BEFORE the first token is emitted (nothing has been
+// shown to the client yet, so a silent retry is safe); once a token has
+// flowed, the caller is committed and must surface an error instead.
+async function callOpenRouterStream(messages, { onToken, timeoutMs = 90000, retries = 1, signal } = {}) {
+  if (!OPENROUTER_API_KEY) return { failed: true, beforeFirstToken: true };
+
+  const attemptOnce = async () => {
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+    const onExternalAbort = () => controller.abort();
+    if (signal) {
+      if (signal.aborted) controller.abort();
+      else signal.addEventListener('abort', onExternalAbort, { once: true });
+    }
+
+    let firstTokenReceived = false;
+    let fullContent = '';
+
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ model: OPENROUTER_MODEL, messages, stream: true }),
+        signal: controller.signal
+      });
+
+      if (!response.ok || !response.body) {
+        const errorText = await response.text().catch(() => '');
+        console.error(`OpenRouter stream error: ${response.status} ${response.statusText}`, errorText);
+        return { failed: true, beforeFirstToken: true };
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunkText = decoder.decode(value, { stream: true });
+        const parsed = parseSseChunk(buffer, chunkText);
+        buffer = parsed.buffer;
+        for (const evt of parsed.events) {
+          const delta = evt.choices?.[0]?.delta?.content;
+          if (delta) {
+            firstTokenReceived = true;
+            fullContent += delta;
+            if (onToken) onToken(delta);
+          }
+        }
+      }
+
+      return { content: fullContent };
+    } catch (error) {
+      const label = error.name === 'AbortError' ? 'aborted' : 'errored';
+      console.error(`OpenRouter stream ${label}${firstTokenReceived ? ' (after tokens flowed)' : ' (before first token)'}:`, error.message);
+      return { failed: true, beforeFirstToken: !firstTokenReceived, partialContent: fullContent };
+    } finally {
+      clearTimeout(timeoutHandle);
+      if (signal) signal.removeEventListener('abort', onExternalAbort);
+    }
+  };
+
+  let lastResult;
+  const maxAttempts = retries + 1;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    lastResult = await attemptOnce();
+    if (lastResult.content !== undefined) return lastResult;
+    if (!lastResult.beforeFirstToken) return lastResult;
+    if (attempt < maxAttempts - 1) {
+      await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+    }
+  }
+  return lastResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -1476,60 +1642,272 @@ async function analyzeDocumentText(text, contract) {
   return baseAnalysis;
 }
 
-// Generate chat response dynamically based on text
-async function generateChatResponse(message, contract, role) {
+// ---------------------------------------------------------------------------
+// Phase 3: chat history, plain-text answer protocol, and citation verification
+// ---------------------------------------------------------------------------
+
+const CHAT_HISTORY_MAX_TURNS = 8;
+const CHAT_HISTORY_MAX_CHARS = 2000;
+
+function isErrorAssistantContent(content) {
+  return content.startsWith('ERROR:') || content.startsWith('Sorry, I encountered an error');
+}
+
+// Never trusts the client: validates shape, drops malformed/error turns,
+// truncates per-turn length, and caps total turns — independent of whatever
+// filtering the frontend already does before sending.
+function sanitizeChatHistory(history) {
+  if (!Array.isArray(history)) return [];
+  const cleaned = [];
+  for (const turn of history) {
+    if (!turn || typeof turn !== 'object') continue;
+    const { role, content } = turn;
+    if (role !== 'user' && role !== 'assistant') continue;
+    if (typeof content !== 'string' || content.length === 0) continue;
+    if (role === 'assistant' && isErrorAssistantContent(content)) continue;
+    cleaned.push({ role, content: content.slice(0, CHAT_HISTORY_MAX_CHARS) });
+  }
+  return cleaned.slice(-CHAT_HISTORY_MAX_TURNS);
+}
+
+const CHAT_SYSTEM_PROMPT = `You are a contract analysis assistant. Use ONLY the provided contract excerpts to answer the user's question, in natural, conversational plain text — not JSON, not markdown code fences.
+
+If the excerpts do not contain an answer, say so explicitly rather than guessing.
+
+Respond in exactly this layout:
+
+<your plain-text answer>
+
+SOURCES:
+- "<short verbatim quote from the excerpts>"
+- "<another quote>"
+
+IMPLICATIONS:
+- <one-line practical implication>
+
+The SOURCES and IMPLICATIONS sections are optional — omit either one entirely if it doesn't apply. Every quote under SOURCES must be an exact, verbatim substring of the excerpts provided; do not paraphrase or invent quotes.`;
+
+// Shared by both /api/chat and /api/chat/stream so their prompts (and
+// therefore their answers) never drift apart. Retrieval query blends the
+// last user turn with the current message — a bare follow-up like "is that
+// normal?" has no referent on its own, so retrieval on it alone would fail.
+async function buildChatMessages(message, contract, role, rawHistory) {
   const text = contract.text || 'No text found in contract.';
   const question = String(message || '').trim();
-  const { chunks: contextChunks } = await buildRelevantContext(text, question, 4, contract);
+  const history = sanitizeChatHistory(rawHistory);
 
-  if (!OPENROUTER_API_KEY) {
-    return {
-      role: 'assistant',
-      content: 'ERROR: OpenRouter API key is not configured. AI chat is unavailable.',
-      perspective: role || contract.role || 'All',
-      citations: [],
-      implications: [],
-      timestamp: new Date().toISOString()
-    };
-  }
+  const lastUserTurn = [...history].reverse().find((h) => h.role === 'user');
+  const retrievalQuery = lastUserTurn ? `${lastUserTurn.content} ${question}`.trim() : question;
+  console.log(`[chat] history: ${history.length} turn(s) | retrieval query: "${retrievalQuery}"`);
 
-  const contextBlock = contextChunks
-    .map((chunk, idx) => `Excerpt ${idx + 1}:\n${chunk.chunk}`)
-    .join('\n\n');
-  const systemPrompt = `You are a contract analysis assistant.
-Use ONLY the provided excerpts to answer the user's question. If the excerpts do not contain an answer, say so explicitly.
-Return strictly valid JSON with this schema:
-{
-  "content": "...",
-  "citations": ["Excerpt 1: <short exact quote>", "Excerpt 2: <short exact quote>"],
-  "implications": ["...", "..."]
+  const { chunks: contextChunks } = await buildRelevantContext(text, retrievalQuery, 4, contract);
+  const contextBlock = contextChunks.map((c, idx) => `Excerpt ${idx + 1}:\n${c.chunk}`).join('\n\n');
+
+  const messages = [
+    { role: 'system', content: CHAT_SYSTEM_PROMPT },
+    ...history.map((h) => ({ role: h.role, content: h.content })),
+    { role: 'user', content: `Role perspective: ${role || contract.role || 'All'}\nQuestion: ${question}\n\nContract Excerpts:\n${contextBlock}` }
+  ];
+
+  return { messages, text, question };
 }
-Make sure citations contain verbatim quotes from the excerpts. Do NOT use markdown fences.`;
 
-  const parsed = await callOpenRouter([
-    { role: "system", content: systemPrompt },
-    { role: "user", content: `Role perspective: ${role || contract.role || 'All'}\nQuestion: ${question}\n\nContract Excerpts:\n${contextBlock}` }
-  ], { expectJson: true, retries: 1 });
+const SOURCES_HEADER_REGEX = /^SOURCES:\s*$/im;
+const IMPLICATIONS_HEADER_REGEX = /^IMPLICATIONS:\s*$/im;
 
-  if (!parsed || typeof parsed.content !== 'string') {
-    return {
-      role: 'assistant',
-      content: 'ERROR: The AI service failed to produce a usable response. Please check your API key/quota and try again.',
-      perspective: role || contract.role || 'All',
-      citations: [],
-      implications: [],
-      timestamp: new Date().toISOString()
-    };
+function stripBulletPrefix(line) {
+  return line.replace(/^[\s]*[-*•]\s*/, '').trim();
+}
+
+function stripSurroundingQuotes(str) {
+  const trimmed = str.trim();
+  const quotePairs = [['"', '"'], ["'", "'"], ['“', '”'], ['‘', '’']];
+  for (const [open, close] of quotePairs) {
+    if (trimmed.length >= 2 && trimmed.startsWith(open) && trimmed.endsWith(close)) {
+      return trimmed.slice(1, -1).trim();
+    }
+  }
+  return trimmed;
+}
+
+function extractBulletLines(blockText) {
+  return blockText
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => /^[-*•]/.test(l))
+    .map(stripBulletPrefix)
+    .map(stripSurroundingQuotes)
+    .filter((l) => l.length > 0);
+}
+
+// Tolerant parser for the plain-text chat protocol — never throws. Sections
+// are matched case-insensitively and may appear in either order; malformed
+// or missing sections just yield empty arrays rather than an error.
+function parseChatAnswer(rawText) {
+  const text = String(rawText || '');
+  const sourcesMatch = SOURCES_HEADER_REGEX.exec(text);
+  const implicationsMatch = IMPLICATIONS_HEADER_REGEX.exec(text);
+
+  const sectionStarts = [sourcesMatch?.index, implicationsMatch?.index].filter((i) => typeof i === 'number');
+  const contentEnd = sectionStarts.length > 0 ? Math.min(...sectionStarts) : text.length;
+  const content = text.slice(0, contentEnd).trim();
+
+  let quotes = [];
+  let implications = [];
+
+  if (sourcesMatch) {
+    const start = sourcesMatch.index + sourcesMatch[0].length;
+    const end = (implicationsMatch && implicationsMatch.index > sourcesMatch.index) ? implicationsMatch.index : text.length;
+    quotes = extractBulletLines(text.slice(start, end));
   }
 
+  if (implicationsMatch) {
+    const start = implicationsMatch.index + implicationsMatch[0].length;
+    const end = (sourcesMatch && sourcesMatch.index > implicationsMatch.index) ? sourcesMatch.index : text.length;
+    implications = extractBulletLines(text.slice(start, end));
+  }
+
+  return { content, quotes, implications };
+}
+
+// Normalizes for quote matching: lowercase, curly->straight quotes, collapse
+// whitespace runs. PDF extraction mangles whitespace constantly, so this is
+// the whole point of verification rather than a plain substring check.
+function normalizeForQuoteMatch(str) {
+  return String(str || '')
+    .toLowerCase()
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Builds a normalized copy of `text` alongside a map from each normalized
+// character's index back to its original index. Normalization here only
+// lowercases, swaps quote characters 1:1, and collapses whitespace runs to a
+// single space — it never inserts new characters — so this mapping is
+// always well-defined.
+function buildNormalizedOffsetMap(text) {
+  let normalized = '';
+  const offsetMap = [];
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (/\s/.test(ch)) {
+      if (normalized.length === 0 || normalized[normalized.length - 1] !== ' ') {
+        normalized += ' ';
+        offsetMap.push(i);
+      }
+      while (i < text.length && /\s/.test(text[i])) i++;
+      continue;
+    }
+    let c = ch.toLowerCase();
+    if (c === '“' || c === '”') c = '"';
+    if (c === '‘' || c === '’') c = "'";
+    normalized += c;
+    offsetMap.push(i);
+    i++;
+  }
+  return { normalized, offsetMap };
+}
+
+function findNormalizedOffset(quote, text) {
+  const normalizedQuote = normalizeForQuoteMatch(quote);
+  if (!normalizedQuote) return null;
+  const { normalized, offsetMap } = buildNormalizedOffsetMap(text);
+  const idx = normalized.indexOf(normalizedQuote);
+  if (idx === -1) return null;
+  return offsetMap[idx];
+}
+
+// → { offset } | null. Tries an exact (normalized) match first; models pad
+// quote tails with plausible-sounding text, so a long quote (>=8 words) that
+// fails whole gets one retry against just its first 8 words before being
+// treated as unverifiable and dropped.
+function verifyQuote(quote, text) {
+  if (!quote || !text) return null;
+
+  let offset = findNormalizedOffset(quote, text);
+  if (offset !== null) return { offset };
+
+  const words = String(quote).trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 8) {
+    const prefix = words.slice(0, 8).join(' ');
+    offset = findNormalizedOffset(prefix, text);
+    if (offset !== null) return { offset };
+  }
+
+  return null;
+}
+
+function finalizeChatAnswer(rawText, text, role, contract) {
+  const parsed = parseChatAnswer(rawText);
+  const citations = [];
+  for (const quote of parsed.quotes) {
+    const verified = verifyQuote(quote, text);
+    if (verified) citations.push({ quote, offset: verified.offset });
+  }
   return {
     role: 'assistant',
     content: parsed.content,
     perspective: role || contract.role || 'All',
-    citations: Array.isArray(parsed.citations) ? parsed.citations : [],
-    implications: Array.isArray(parsed.implications) ? parsed.implications : [],
+    citations,
+    implications: parsed.implications,
     timestamp: new Date().toISOString()
   };
+}
+
+function chatErrorMessage(content, role, contract) {
+  return {
+    role: 'assistant',
+    content,
+    perspective: role || contract.role || 'All',
+    citations: [],
+    implications: [],
+    timestamp: new Date().toISOString()
+  };
+}
+
+// Generate chat response dynamically based on text (non-streaming path).
+async function generateChatResponse(message, contract, role, rawHistory) {
+  if (!OPENROUTER_API_KEY) {
+    return chatErrorMessage('ERROR: OpenRouter API key is not configured. AI chat is unavailable.', role, contract);
+  }
+
+  const { messages, text } = await buildChatMessages(message, contract, role, rawHistory);
+  const raw = await callOpenRouter(messages, { expectJson: false, retries: 1 });
+
+  if (!raw) {
+    return chatErrorMessage('ERROR: The AI service failed to produce a usable response. Please check your API key/quota and try again.', role, contract);
+  }
+
+  return finalizeChatAnswer(raw, text, role, contract);
+}
+
+// Streaming counterpart used by /api/chat/stream. `onToken` fires per delta;
+// the returned `message` (on success) is the same final shape as
+// generateChatResponse's return value, built once streaming completes.
+async function generateChatResponseStream(message, contract, role, rawHistory, { onToken, signal } = {}) {
+  if (!OPENROUTER_API_KEY) {
+    return { failed: true, errorMessage: 'OpenRouter API key is not configured. AI chat is unavailable.' };
+  }
+
+  const { messages, text } = await buildChatMessages(message, contract, role, rawHistory);
+  const result = await callOpenRouterStream(messages, { onToken, retries: 1, signal });
+
+  if (result.failed) {
+    if (!result.beforeFirstToken) {
+      console.warn('[chat-stream] Interrupted after tokens had already flowed.');
+    }
+    return {
+      failed: true,
+      errorMessage: result.beforeFirstToken
+        ? 'The AI service failed to produce a usable response. Please check your API key/quota and try again.'
+        : 'Response interrupted before completion.'
+    };
+  }
+
+  return { message: finalizeChatAnswer(result.content, text, role, contract) };
 }
 
 // Serve the main HTML file for all other routes
@@ -1555,5 +1933,10 @@ module.exports = {
   verifyMonetaryItems,
   computeLossGivenDefaultScore,
   clampScore,
-  normalizeRiskLevel
+  normalizeRiskLevel,
+  // Phase 3: chat history, plain-text answer parsing, and citation verification
+  sanitizeChatHistory,
+  parseChatAnswer,
+  verifyQuote,
+  parseSseChunk
 };
