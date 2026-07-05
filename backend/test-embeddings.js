@@ -1,5 +1,12 @@
 // Smoke test: local embedding model via Transformers.js
 // First run downloads ~25MB of weights to the local cache; later runs are offline.
+//
+// Kept intentionally alongside test-retrieval.js/test-calculations.js/
+// test-chat-parse.js (which npm test runs) — this one is a standalone,
+// lower-level check of just the embedder (load time, dims, cosine sanity)
+// for debugging the model itself, independent of the retrieval pipeline
+// built on top of it. Not currently wired into `npm test`; run directly:
+// node backend/test-embeddings.js
 const { pipeline } = require('@xenova/transformers');
 
 function cosine(a, b) {

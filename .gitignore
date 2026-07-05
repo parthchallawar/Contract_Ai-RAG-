@@ -7,6 +7,16 @@ node_modules/
 # Local embedding model cache (~25MB, re-downloaded on demand)
 backend/.models/
 
+# SQLite persistence (Phase 4) — local data, not shared via git
+backend/data.sqlite
+backend/data.sqlite-wal
+backend/data.sqlite-shm
+
+# Eval run outputs (Phase 4) — timestamped runs are throwaway; the committed
+# baseline snapshot referenced by README.md is the one exception
+backend/eval/results/*
+!backend/eval/results/BASELINE.json
+
 # Environment variables (contains API keys — never commit)
 .env
 .env.local

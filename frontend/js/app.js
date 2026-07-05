@@ -345,6 +345,20 @@ async function getContractText(contractId) {
     }
 }
 
+// Phase 4: loads the persisted chat history for a contract (last 50
+// messages). Returns [] on any error so a fresh/failed fetch just means an
+// empty conversation, not a crash.
+async function getChatHistory(contractId) {
+    try {
+        const response = await fetch(`${API_BASE}/contracts/${contractId}/chat`);
+        if (!response.ok) return [];
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching chat history:', error);
+        return [];
+    }
+}
+
 async function updateContractRole(contractId, role) {
     try {
         const response = await fetch(`${API_BASE}/contracts/${contractId}/role`, {
@@ -1501,6 +1515,8 @@ async function uploadFile(file) {
         state.currentContract = result;
         state.contracts.unshift(result);
         resetExtractedTextState();
+        state.chatMessages = []; // a brand-new contract always starts with an empty conversation
+        state.highlightQuote = null;
 
         // Poll for analysis completion
         pollAnalysis(result.id, (analysis) => {
@@ -1570,9 +1586,21 @@ async function openContract(contractId) {
     if (contract) {
         state.currentContract = contract;
         resetExtractedTextState();
+        state.highlightQuote = null;
         if (contract.role) {
             state.selectedRole = contract.role;
         }
+
+        // Phase 4: load this contract's persisted conversation instead of
+        // always starting empty. Set before render() so the loading view
+        // (if any) doesn't briefly flash the previous contract's messages.
+        state.chatMessages = [];
+        getChatHistory(contractId).then((messages) => {
+            if (state.currentContract?.id === contractId) {
+                state.chatMessages = messages;
+                render();
+            }
+        });
 
         switch (state.selectedRole) {
             case 'Investor': state.currentView = 'investor'; break;

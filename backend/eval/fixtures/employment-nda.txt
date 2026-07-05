@@ -1,0 +1,87 @@
+EMPLOYMENT, CONFIDENTIALITY, AND INVENTION ASSIGNMENT AGREEMENT
+
+This Employment, Confidentiality, and Invention Assignment Agreement ("Agreement") is entered into between Vantage Analytics Corp. ("Company") and the individual identified in the signature block ("Employee").
+
+Section 1. Position and Compensation
+
+1.1 Employee shall serve as Senior Data Engineer, reporting to the Director of Engineering, and shall perform such duties as are customarily associated with that position.
+
+1.2 Company shall pay Employee an annual base salary of one hundred forty thousand dollars ($140,000), payable in accordance with Company's standard payroll practices, subject to applicable withholdings.
+
+1.3 Employee shall be eligible for an annual discretionary bonus of up to fifteen percent (15%) of base salary, based on individual and Company performance, at the sole discretion of Company's management.
+
+1.4 Employee shall be eligible to participate in Company's standard benefits programs, including health insurance and a 401(k) retirement plan, subject to the terms of those programs.
+
+Section 2. At-Will Employment
+
+2.1 Employee's employment with Company is "at will," meaning either Employee or Company may end the employment relationship at any time, with or without cause and with or without advance notice, subject to the severance provisions of Section 3.
+
+Section 3. Severance
+
+3.1 If Company ends Employee's employment without Cause (as defined in Section 3.2), Employee shall receive severance pay equal to two (2) weeks of base salary for each full year of continuous service, with a minimum of four (4) weeks and a maximum of twenty-six (26) weeks, subject to Employee's execution of a general release of claims.
+
+3.2 "Cause" means Employee's conviction of a felony, act of fraud or dishonesty against Company, willful and continued failure to perform material job duties after written notice, or material breach of this Agreement.
+
+3.3 No severance shall be payable if Employee resigns voluntarily or is terminated for Cause.
+
+Section 4. Confidentiality
+
+4.1 Employee acknowledges that during employment, Employee will have access to Confidential Information, including but not limited to source code, algorithms, customer lists, pricing strategies, financial data, and unpublished business plans.
+
+4.2 Employee agrees not to disclose or use any Confidential Information, either during or after employment, except as required to perform Employee's job duties for the benefit of Company.
+
+4.3 The confidentiality obligations described in this Section 4 shall survive termination of employment for a period of three (3) years, except with respect to trade secrets, which shall remain protected for as long as they qualify as trade secrets under applicable law.
+
+Section 5. Invention Assignment
+
+5.1 Employee agrees to promptly disclose to Company all inventions, discoveries, designs, and works of authorship conceived or developed by Employee, solely or jointly, during the term of employment that relate to Company's business or that are developed using Company resources.
+
+5.2 Employee hereby assigns to Company all right, title, and interest in and to all such inventions, and agrees to execute any documents reasonably necessary for Company to perfect its ownership rights.
+
+5.3 This Section 5 does not apply to any invention that Employee develops entirely on Employee's own time, without using Company's equipment, supplies, facilities, or trade secret information, and that does not relate to Company's actual or anticipated business.
+
+Section 6. Non-Competition
+
+6.1 During employment and for a period of twelve (12) months following the end of the employment relationship for any reason, Employee shall not, directly or indirectly, provide services substantially similar to those Employee provided to Company to any business that competes with Company's contract-analytics software products, within the United States.
+
+6.2 During employment and for a period of twelve (12) months thereafter, Employee shall not solicit any employee of Company to leave Company's employment, nor solicit any customer of Company with whom Employee had material contact during the last twelve (12) months of employment.
+
+6.3 Employee acknowledges that the restrictions in this Section 6 are reasonable in scope and duration given Employee's access to Confidential Information and are necessary to protect Company's legitimate business interests.
+
+Section 7. Return of Property
+
+7.1 Upon the end of employment for any reason, Employee shall promptly return to Company all documents, equipment, access credentials, and other property belonging to Company, including all copies of Confidential Information in any form.
+
+Section 8. Dispute Resolution
+
+8.1 Any dispute arising out of or relating to this Agreement, including its formation, interpretation, or breach, shall be resolved through binding arbitration administered by the American Arbitration Association under its Employment Arbitration Rules.
+
+8.2 The arbitration shall take place in Cook County, Illinois, and shall be conducted by a single arbitrator.
+
+8.3 The arbitrator's decision shall be final and binding, and judgment on the award may be entered in any court having jurisdiction.
+
+8.4 Notwithstanding Section 8.1, either Party may seek temporary or preliminary injunctive relief in a court of competent jurisdiction to enforce the confidentiality and non-competition obligations of this Agreement pending arbitration.
+
+Section 9. General Provisions
+
+9.1 This Agreement shall be governed by the laws of the State of Illinois, without regard to its conflict of laws principles.
+
+9.2 If any provision of this Agreement is found to be unenforceable, a court or arbitrator may modify that provision to the minimum extent necessary to make it enforceable, and the remainder of the Agreement shall remain in full force and effect.
+
+9.3 This Agreement constitutes the entire agreement between Employee and Company with respect to its subject matter and supersedes all prior negotiations and agreements, whether written or oral.
+
+9.4 This Agreement may only be modified by a written document signed by both Employee and an authorized officer of Company.
+
+Section 10. Outside Activities
+
+10.1 During employment, Employee shall devote substantially all of Employee's business time and attention to the performance of Employee's duties for Company.
+
+10.2 Employee may engage in civic, charitable, or passive personal investment activities, provided such activities do not interfere with Employee's job duties or create a conflict of interest with Company's business.
+
+10.3 Employee shall promptly disclose to Company any outside board membership, advisory role, or ownership interest in any business that could reasonably be seen as competing with or related to Company's business.
+
+Section 11. Notices
+
+11.1 Any notice required under this Agreement shall be in writing and delivered by hand, by certified mail, or by email with confirmation of receipt, to the addresses on file with Company's human resources department.
+
+11.2 Notice shall be deemed effective upon actual receipt or, if delivered by certified mail, three (3) business days after mailing.

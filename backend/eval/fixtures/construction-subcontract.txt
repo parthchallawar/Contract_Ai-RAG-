@@ -1,0 +1,99 @@
+STANDARD FORM SUBCONTRACT AGREEMENT
+
+This Subcontract Agreement ("Subcontract") is made between Ridgeline General Contractors, LLC ("Contractor") and Summit Steel & Concrete, Inc. ("Subcontractor") for work on the Harborview Distribution Center project (the "Project").
+
+Section 1. Scope of Work
+
+1.1 Subcontractor shall furnish all labor, materials, equipment, and supervision necessary to perform the structural steel and concrete work described in Exhibit A, in accordance with the Project drawings and specifications.
+
+1.2 Subcontractor shall perform the Work in a good and workmanlike manner consistent with generally accepted industry standards.
+
+Section 2. Contract Price
+
+2.1 Contractor shall pay Subcontractor a total contract price of seven hundred fifty thousand dollars ($750,000) for complete and satisfactory performance of the Work described in Section 1 (the "Contract Price").
+
+2.2 The Contract Price is a fixed lump sum and includes all labor, materials, equipment, taxes, insurance, and overhead required to complete the Work, unless a Change Order is issued in accordance with Section 8.
+
+Section 3. Payment Terms
+
+3.1 Subcontractor shall submit monthly Applications for Payment to Contractor by the twenty-fifth (25th) day of each month, itemizing Work completed to date.
+
+3.2 Contractor shall pay approved Applications for Payment within thirty (30) days of receipt (Net 30), less retainage as described in Section 3.3.
+
+3.3 Contractor shall withhold retainage of ten percent (10%) from each progress payment. Retainage shall be released within forty-five (45) days of Substantial Completion, provided all punch list items have been resolved and lien waivers have been submitted in accordance with Section 3.4.
+
+3.4 Subcontractor shall furnish Contractor with a conditional lien waiver upon receipt of each progress payment, and an unconditional lien waiver upon receipt of final payment, in the forms attached as Exhibit C.
+
+Section 4. Schedule and Liquidated Damages
+
+4.1 Subcontractor shall commence the Work within five (5) business days of receiving a Notice to Proceed and shall achieve Substantial Completion within ninety (90) calendar days thereafter.
+
+4.2 Should Subcontractor fail to achieve Substantial Completion by the date specified in Section 4.1, and such failure is not excused by a Force Majeure event or Contractor-caused delay, Subcontractor shall pay Contractor liquidated damages of two thousand five hundred dollars ($2,500) for each calendar day of delay, not as a penalty but as a genuine pre-estimate of Contractor's likely damages.
+
+4.3 The Parties acknowledge that actual damages resulting from delay would be difficult to ascertain with precision, and that the liquidated damages amount specified in Section 4.2 represents a reasonable estimate thereof.
+
+Section 5. Performance Bond
+
+5.1 Prior to commencing the Work, Subcontractor shall furnish a performance bond and a labor and material payment bond, each in an amount equal to one hundred percent (100%) of the Contract Price, issued by a surety company reasonably acceptable to Contractor.
+
+5.2 The performance bond shall remain in effect until Final Completion and expiration of all warranty obligations described in Section 9.
+
+Section 6. Indemnification
+
+6.1 Subcontractor shall indemnify, defend, and hold harmless Contractor, the Owner, and their respective officers, agents, and employees from and against all claims, damages, losses, and expenses, including reasonable attorneys' fees, arising out of or resulting from the performance of the Work, to the extent caused by the negligent acts or omissions of Subcontractor or anyone for whose acts Subcontractor may be liable.
+
+6.2 The indemnification obligations under Section 6.1 shall not be limited by any limitation on the amount of damages, compensation, or benefits payable under workers' compensation acts, disability benefit acts, or other employee benefit acts.
+
+Section 7. Insurance
+
+7.1 Subcontractor shall maintain commercial general liability insurance with limits of not less than one million dollars ($1,000,000) per occurrence and two million dollars ($2,000,000) in the aggregate, naming Contractor and Owner as additional insureds.
+
+7.2 Subcontractor shall maintain workers' compensation insurance as required by applicable state law and employer's liability insurance with limits of not less than one million dollars ($1,000,000) per accident.
+
+Section 8. Changes to the Work
+
+8.1 Contractor may, without invalidating this Subcontract, order changes in the Work through a written Change Order signed by both Parties, adjusting the Contract Price and schedule as appropriate.
+
+8.2 Subcontractor shall not proceed with any changed or additional work absent a fully executed Change Order or written directive from Contractor, except in a genuine emergency threatening life or property.
+
+Section 9. Warranty
+
+9.1 Subcontractor warrants that all Work shall be free from defects in materials and workmanship for a period of one (1) year following Substantial Completion.
+
+9.2 Subcontractor shall promptly correct, at its own expense, any Work found to be defective during the warranty period described in Section 9.1, upon receiving written notice from Contractor.
+
+Section 10. Termination
+
+10.1 Contractor may terminate this Subcontract for cause if Subcontractor persistently fails to supply adequate workers or materials, fails to make prompt payment to its own workers or suppliers, or otherwise materially breaches this Subcontract and fails to cure within seven (7) days of written notice.
+
+10.2 Contractor may also terminate this Subcontract for its own convenience upon ten (10) days' written notice, in which case Subcontractor shall be paid for Work properly performed prior to termination, plus reasonable costs of demobilization, but shall have no claim for lost profit on unperformed Work.
+
+Section 11. Dispute Resolution
+
+11.1 Any dispute arising under this Subcontract that cannot be resolved through good-faith negotiation between the Parties' project managers shall be submitted to mediation before either Party may pursue litigation.
+
+11.2 This Subcontract shall be governed by the laws of the Commonwealth of Virginia.
+
+Section 12. General Provisions
+
+12.1 This Subcontract, including all referenced Exhibits, constitutes the entire agreement between the Parties concerning the Work.
+
+12.2 No waiver of any provision of this Subcontract shall be effective unless in writing and signed by the Party against whom the waiver is sought to be enforced.
+
+12.3 Subcontractor shall comply with all applicable federal, state, and local laws, codes, and regulations in the performance of the Work, including all OSHA safety requirements referenced in Exhibit D.
+
+12.4 If any provision of this Subcontract is held invalid or unenforceable, the remaining provisions shall continue in full force and effect.
+
+12.5 Notices under this Subcontract shall be deemed given when delivered personally, sent by certified mail, or sent by email with confirmation of receipt, to the addresses specified in the Order Form.
+
+Section 13. Force Majeure
+
+13.1 Neither Party shall be responsible for delays or failures in performance caused by circumstances beyond its reasonable control, including acts of God, fire, flood, epidemic, war, civil unrest, or governmental action.
+
+13.2 A Party affected by a Force Majeure event shall notify the other Party promptly and shall use reasonable diligence to resume performance once the event has ended. Delays excused under this Section 13 shall extend the schedule under Section 4.1 by a corresponding period but shall not entitle Subcontractor to any additional compensation.
+
+Section 14. Safety Requirements
+
+14.1 Subcontractor shall be solely responsible for the safety of its employees, subcontractors, and agents while performing the Work, and shall comply with all applicable Occupational Safety and Health Administration (OSHA) standards.
+
+14.2 Subcontractor shall maintain a written site-specific safety plan and shall promptly report any workplace accident or near-miss to Contractor's site superintendent within twenty-four (24) hours of occurrence.

@@ -1,5 +1,5 @@
 {
-  "devDependencies": {
-    "@playwright/test": "^1.58.2"
-  }
+  "name": "contract-ai",
+  "private": true,
+  "description": "Root of the ContractAI repo — all app code and dependencies live in backend/ and frontend/. See README.md."
 }

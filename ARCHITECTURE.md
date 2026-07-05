@@ -1,369 +1,112 @@
-# ContractAI - Architecture Overview
+# ContractAI — Architecture Deep Dive
 
-## System Architecture
+This is the companion to [README.md](README.md) for anyone modifying the retrieval, persistence, or chat internals. README is the pitch; this is the how.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Frontend (Browser)                    │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │  Single Page Application (Vanilla JS + Tailwind)      │  │
-│  │  - Upload View                                         │  │
-│  │  - Investor View                                       │  │
-│  │  - Legal View                                          │  │
-│  │  - PM View                                             │  │
-│  │  - AI Chat View                                       │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │ HTTP/REST API
-                               │
-┌──────────────────────────────▼──────────────────────────────────┐
-│                    Backend (Node.js + Express)                  │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │  API Routes                                           │  │
-│  │  - GET  /api/contracts                                │  │
-│  │  - POST /api/contracts/upload                          │  │
-│  │  - GET  /api/contracts/:id                            │  │
-│  │  - GET  /api/contracts/:id/analysis                   │  │
-│  │  - PATCH /api/contracts/:id/role                       │  │
-│  │  - DELETE /api/contracts/:id                           │  │
-│  │  - POST /api/chat                                     │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │  Business Logic                                       │  │
-│  │  - File Upload (Multer)                               │  │
-│  │  - Contract Management (In-Memory)                     │  │
-│  │  - AI Analysis Generation (Mock)                        │  │
-│  │  - Role-Based Response Routing                         │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │  Data Store                                           │  │
-│  │  - contracts: Map<id, Contract>                       │  │
-│  │  - analyses: Map<id, Analysis>                       │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└──────────────────────────────┬──────────────────────────────────┘
-                               │
-                               ▼
-                        ┌──────────────┐
-                        │  File System │
-                        │  /uploads/   │
-                        └──────────────┘
-```
+## Process & data model
 
-## Component Details
-
-### Frontend Components
-
-#### 1. State Management
-- **Location**: `frontend/js/app.js`
-- **Purpose**: Centralized application state
-- **State Object**:
-  ```javascript
-  {
-    currentView: 'upload' | 'investor' | 'legal' | 'pm' | 'chat',
-    selectedRole: 'Investor' | 'Legal' | 'PM' | 'HR',
-    contracts: Array<Contract>,
-    currentContract: Contract | null,
-    currentAnalysis: Analysis | null,
-    chatMessages: Array<Message>,
-    isLoading: boolean
-  }
-  ```
-
-#### 2. View Renderers
-Each view has a dedicated renderer function:
-- `renderUploadView()` - File upload and role selection
-- `renderInvestorView()` - Financial risk analysis
-- `renderLegalView()` - Compliance and legal insights
-- `renderPMView()` - Operational analysis
-- `renderChatView()` - AI-powered Q&A
-
-#### 3. API Client
-Functions for backend communication:
-- `fetchContracts()` - Get all contracts
-- `uploadContract(file, role)` - Upload new contract
-- `getAnalysis(contractId)` - Get analysis results
-- `updateContractRole(contractId, role)` - Change analysis perspective
-- `sendChatMessage(contractId, message, role)` - Chat with AI
-
-### Backend Components
-
-#### 1. Express Server
-- **Location**: `backend/server.js`
-- **Port**: 3000 (configurable via PORT env var)
-- **Middleware**:
-  - `cors()` - Enable CORS
-  - `express.json()` - Parse JSON bodies
-  - `express.urlencoded()` - Parse URL-encoded bodies
-  - `multer` - Handle multipart/form-data (file uploads)
-
-#### 2. API Endpoints
-
-| Method | Endpoint | Description | Request | Response |
-|---------|-----------|-------------|----------|----------|
-| GET | `/api/health` | Health check | - | `{ status, timestamp }` |
-| GET | `/api/contracts` | List all contracts | - | `Array<Contract>` |
-| POST | `/api/contracts/upload` | Upload contract | `FormData` | `Contract` |
-| GET | `/api/contracts/:id` | Get contract | - | `Contract` |
-| GET | `/api/contracts/:id/analysis` | Get analysis | - | `Analysis` |
-| PATCH | `/api/contracts/:id/role` | Update role | `{ role }` | `{ id, role, status }` |
-| DELETE | `/api/contracts/:id` | Delete contract | - | `{ message }` |
-| POST | `/api/chat` | Chat with AI | `{ contractId, message, role }` | `ChatResponse` |
-
-#### 3. Data Models
-
-**Contract**
-```javascript
-{
-  id: string,
-  name: string,
-  fileName: string,
-  originalName: string,
-  filePath: string,
-  fileSize: number,
-  uploadDate: string (ISO),
-  status: 'analyzing' | 'completed',
-  role: 'Investor' | 'Legal' | 'PM' | 'HR'
-}
-```
-
-**Analysis** (Role-specific)
-```javascript
-// Common fields
-{
-  contractId: string,
-  contractName: string,
-  generatedAt: string,
-  overallRisk: string,
-  riskScore: number,
-  complianceScore: number
-}
-
-// Investor-specific
-{
-  financialExposure: string,
-  ltvImpact: string,
-  investorCompliance: string,
-  riskFactors: Array<RiskFactor>,
-  marketBenchmark: { matchPercentage, note }
-}
-
-// Legal-specific
-{
-  clauses: number,
-  totalClauses: number,
-  enforceabilityRisks: Array<Risk>,
-  complianceChecks: Array<ComplianceCheck>,
-  jurisdiction: { location, governingLaw, notes }
-}
-
-// PM-specific
-{
-  deliverables: Array<Deliverable>,
-  ipRights: { customerData, saasSoftware, usageRestrictions },
-  timelines: Array<Timeline>,
-  actionItems: Array<ActionItem>
-}
-```
-
-## Data Flow
-
-### Contract Upload Flow
+Single Express process (`backend/server.js`), no framework on the frontend (`frontend/js/app.js`, one `state` object, full re-render on every change — no virtual DOM, no diffing). All reads happen against in-memory `Map`s (`contracts`, `analyses`); every mutation write-throughs to SQLite (`backend/db.js`) so a restart rehydrates rather than starting empty. See [Persistence](#persistence) below.
 
 ```
-User selects file & role
-    ↓
-Frontend: handleFileSelect()
-    ↓
-Frontend: uploadContract(file, role)
-    ↓
+contracts: Map<id, {
+  id, name, fileName, originalName, filePath, fileSize, uploadDate,
+  status: 'analyzing' | 'completed' | 'error',
+  role, text,
+  index: { chunks, embeddings, bm25, textHash } | undefined,
+  analysis, versions: [...]
+}>
+analyses: Map<id, AnalysisObject>   // duplicated onto contract.analysis too
+```
+
+## Upload → analysis pipeline
+
+```
 POST /api/contracts/upload
-    ↓
-Backend: multer saves file to /uploads/
-    ↓
-Backend: Create Contract record
-    ↓
-Backend: Return Contract with ID
-    ↓
-Frontend: Start polling for analysis
-    ↓
-Backend: Simulate AI analysis (2s delay)
-    ↓
-Backend: Generate role-specific analysis
-    ↓
-Frontend: Receive analysis via polling
-    ↓
-Frontend: Navigate to role-specific view
+   │  (multer saves file, contract created with status:'analyzing', response returns immediately)
+   ▼
+extractTextFromFile()          pdf-parse (custom pagerender) | mammoth | raw read
+   │
+normalizeNumericSpacing()      collapses "$1 000" → "$1000" (PDF extraction artifact)
+   │
+ensureContractIndex()          skips rebuild if sha256(text) unchanged (role-switch reuse)
+   │  chunkText(text, {targetSize:1000, overlap:150})
+   │  ├─ buildBM25Index(chunks)                     (in-process, rebuilt from text on hydrate)
+   │  └─ embedTexts(chunks) → Float32Array[]         (MiniLM, null on embedder failure)
+   ▼
+analyzeDocumentText()
+   ├─ extractMonetaryCandidates() → selectMonetaryExposureWithLLM() → verifyMonetaryItems()
+   ├─ generateLegalInsightsWithRAG()   ─┐  hybridRetrieve(index, ROLE_QUERY, k=6)
+   ├─ generatePMInsightsWithRAG()      ─┘  (falls back to BM25-only, then Phase-0 keyword scoring)
+   └─ extractRiskSignals()             regex-derived boolean flags (termination-for-convenience, etc.)
+   ▼
+baseAnalysis (flat object, all roles' fields) → analyses.set() + db.saveAnalysis()
 ```
 
-### Role Switching Flow
+Role switch and new-version upload run the identical pipeline from `ensureContractIndex()` down; the `textHash` check is what makes a role switch (same file, re-extracted) skip re-embedding.
+
+## Retrieval: hybrid RRF
+
+`backend/retrieval.js`. Two independent rankings over the same chunk set, fused:
+
+- **BM25** (`k1=1.5, b=0.75`, IDF as `ln(1 + (N-df+0.5)/(df+0.5))` — the +1 form so common terms never score negative). Tokenizer keeps `net-30`, `12.3`, section numbers (`[a-z0-9][a-z0-9.-]{1,}`).
+- **Semantic**: query embedded with the same MiniLM model; since all vectors are L2-normalized at embed time, cosine similarity reduces to a plain dot product — no per-query norm computation.
+- **Fusion**: Reciprocal Rank Fusion, `score(chunk) = Σ_leg 1/(60 + rank_leg(chunk))`, summed over whichever legs the chunk appears in. A chunk absent from both legs (zero relevance signal) is dropped rather than returned as padding.
+- **Degradation ladder**: hybrid → BM25-only (embedder unavailable) → Phase-0 keyword scoring (index itself missing, e.g. a build failure). Every layer is designed to degrade rather than throw.
+
+`backend/eval/run-eval.js` measures all three rungs of that ladder against the same shared per-fixture index so the comparison isolates the scoring mechanism, not chunking differences.
+
+## Numeric grounding (Phase 2)
 
 ```
-User clicks "Switch Role"
-    ↓
-Frontend: selectRole(newRole)
-    ↓
-Frontend: updateContractRole(contractId, newRole)
-    ↓
-PATCH /api/contracts/:id/role
-    ↓
-Backend: Update contract role
-    ↓
-Backend: Regenerate analysis for new role
-    ↓
-Frontend: Poll for new analysis
-    ↓
-Frontend: Update view with new perspective
+extractMonetaryCandidates(text)
+   │  regex scan + filter: currency symbol OR nearby money-keyword;
+   │  rejects bare years, section/clause refs, TOC dot-leaders, ALL-CAPS
+   │  numbered headings, hyphen-chained document codes (FMA-9, DGS-30-084)
+   ▼
+selectMonetaryExposureWithLLM(candidates)
+   │  LLM classifies each candidate as risk | obligation (never computes sums itself)
+   ▼
+verifyMonetaryItems(parsed, candidates)
+   │  exact-raw match, then amount-equality (handles "$50,000" → "50000 USD" reformatting)
+   │  each candidate occurrence consumes at most one item per category (dedup)
+   │  equal-amount + >60% context-token-overlap → possibleDuplicate flag (soft, never drops)
+   ▼
+totals = reduce(grounded items only)   // hallucinated/unmatched items excluded, logged
 ```
 
-### Chat Flow
+`calculations.grounding.rate` (grounded / total classified) is surfaced in the analysis JSON and is one of the eval harness's `--llm` metrics.
 
-```
-User types question
-    ↓
-Frontend: sendChatMessage()
-    ↓
-POST /api/chat
-    ↓
-Backend: generateChatResponse(message, role, contract)
-    ↓
-Backend: Return role-specific response
-    ↓
-Frontend: Display response with citations
-```
+## Chat (Phase 3)
 
-## Integration Points
+- **Memory**: client sends up to the last 8 turns (`{role, content}`, 2000-char cap per turn); server re-validates independently (`sanitizeChatHistory`) rather than trusting the client. Retrieval query for a turn is `lastUserTurn + currentMessage` — a bare follow-up ("is that normal?") has no retrievable content on its own.
+- **Protocol**: the model is asked for plain text in a fixed layout (`answer / SOURCES: / IMPLICATIONS:`), not JSON — free models are unreliable at wrapping conversational text in valid JSON. `parseChatAnswer()` tolerantly splits the three sections; malformed sections just yield empty arrays, never throw.
+- **Citation verification**: `verifyQuote(quote, text)` normalizes both sides (lowercase, curly→straight quotes, whitespace collapsed to single spaces) and builds an offset map so a match in normalized space still resolves to the correct offset in the *original* text. A ≥8-word quote that fails whole gets one retry against its first 8 words (models pad quote tails with plausible-sounding fabrication).
+- **Streaming**: `POST /api/chat/stream` over SSE. `parseSseChunk()` buffers partial lines across fetch chunks (an upstream provider can split a `data: {...}` line mid-JSON). Retry semantics: only retry before the first token has been emitted to the client; once a token has flowed, the client is committed and any further failure surfaces as an `error` event instead.
 
-### Stitch Views Integration
+## LLM provider fallback
 
-The original stitch views have been integrated as follows:
+`LLM_PROVIDERS` (`server.js`) is an ordered, filtered array — OpenRouter first, then NVIDIA NIM if both `NIM_API_KEY` and `NIM_MODEL` are set (otherwise NIM is simply absent from the array, and behavior is identical to OpenRouter-only). Both `callOpenRouter` (JSON-mode calls: analysis, monetary classification) and `callOpenRouterStream` (SSE chat) iterate this array identically: a 429/5xx response is treated as "this provider is unavailable right now" and moves on to the next provider immediately rather than backing off and retrying the same one; any other failure still gets the existing backoff-and-retry treatment on the current provider first. For streaming specifically, fallback is only attempted *before* the first token — once content has started flowing to the client, switching providers mid-stream would produce mixed, confusing output, so a post-first-token failure surfaces as an `error` event instead. JSON-mode-unsupported detection (`jsonModeUnsupportedByProvider`) is tracked per provider, since one model rejecting `response_format` says nothing about another. NIM is OpenAI-API-compatible for both plain and streaming completions, so no format-specific code was needed beyond parameterizing the URL/key/model — verified live against a real NIM endpoint (`meta/llama-3.1-8b-instruct`), including forcing OpenRouter's real 429 and confirming a clean fallback for both the analysis pipeline and streaming chat.
 
-| Stitch View | Integrated As | Location |
-|-------------|---------------|----------|
-| `contract_upload_&_role_selection_1/code.html` | Upload View | `renderUploadView()` |
-| `investor_risk_analysis_view_1/code.html` | Investor View | `renderInvestorView()` |
-| `legal_counsel_analysis_view_1/code.html` | Legal View | `renderLegalView()` |
-| `pm_operational_analysis_view_1/code.html` | PM View | `renderPMView()` |
-| `role-aware_ai_chatbot_assistant_1/code.html` | AI Chat View | `renderChatView()` |
+## Persistence (Phase 4)
 
-All views share:
-- Common header with navigation
-- Consistent styling (Tailwind CSS)
-- Role-based analysis data
-- Contract context
+`backend/db.js`, `better-sqlite3`, WAL mode. Hydrate-on-boot / write-through: reads still go through the in-memory Maps (zero change to read-path code); every mutation additionally writes to SQLite. If `better-sqlite3` fails to load (e.g. no prebuilt binary for the platform), every `db.js` function becomes a no-op and `/api/health` reports `persistence: 'disabled'` — the app must never fail to start, or behave differently in its core features, because of the database.
 
-### Future Integration Points
-
-1. **AI Service Integration**
-   - Replace `generateMockAnalysis()` with real AI API calls
-   - Support OpenAI, Claude, or custom AI models
-   - Add streaming responses for real-time analysis
-
-2. **Database Integration**
-   - Replace in-memory Maps with PostgreSQL/MongoDB
-   - Add user authentication and authorization
-   - Implement contract versioning
-
-3. **File Storage Integration**
-   - Replace local filesystem with S3/Cloud Storage
-   - Add document processing pipeline
-   - Implement OCR for scanned documents
-
-4. **Notification Integration**
-   - Add email notifications for analysis completion
-   - Implement WebSocket for real-time updates
-   - Add Slack/Teams integration
-
-## Security Considerations
-
-1. **File Upload Validation**
-   - File type validation (PDF, DOCX only)
-   - File size limits (50MB max)
-   - Sanitized filenames to prevent path traversal
-
-2. **Data Protection**
-   - Files stored in secure directory
-   - End-to-end encryption (mocked)
-   - SOC2 Type II compliance (mocked)
-
-3. **API Security**
-   - CORS enabled for development
-   - Rate limiting (to be added)
-   - Authentication/authorization (to be added)
-
-## Performance Optimization
-
-1. **Frontend**
-   - Single-page application (no page reloads)
-   - Lazy loading of views
-   - Debounced search and chat input
-
-2. **Backend**
-   - In-memory storage for fast access
-   - Polling with exponential backoff
-   - Async file operations
-
-3. **Future Optimizations**
-   - Implement caching for repeated analyses
-   - Add CDN for static assets
-   - Use WebSocket instead of polling
-
-## Deployment Architecture
-
-```
-┌─────────────────────────────────────────────────┐
-│              Load Balancer (Nginx)           │
-└──────────────┬───────────────────────────────┘
-               │
-    ┌──────────┴──────────┐
-    │                     │
-┌───▼────┐         ┌─────▼────┐
-│ Node 1 │         │  Node 2  │
-│ :3000  │         │  :3000   │
-└───┬────┘         └─────┬────┘
-    │                     │
-    └──────────┬──────────┘
-               │
-    ┌──────────┴──────────┐
-    │                     │
-┌───▼────┐         ┌─────▼────┐
-│  Redis  │         │PostgreSQL │
-│ (Cache) │         │ (DB)     │
-└─────────┘         └──────────┘
+```sql
+contracts(id PK, name, fileName, originalName, filePath, fileSize,
+          uploadDate, status, role, text, textHash)
+analyses(contractId PK REFERENCES contracts ON DELETE CASCADE, json, generatedAt)
+chunks(contractId, chunkId, start, text, embedding BLOB, PRIMARY KEY(contractId, chunkId))
+chat_messages(id PK AUTOINCREMENT, contractId, role, content, extras JSON, timestamp)
+versions(contractId, version, json, PRIMARY KEY(contractId, version))
 ```
 
-## Monitoring & Logging
+Embeddings round-trip as raw bytes (`Buffer.from(f32.buffer, ...)` in, `new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength/4)` out — zero-copy view, not a re-parse). BM25 is **not** persisted — it's cheap enough to rebuild from chunk text at hydrate time, which avoids serializing its internal `Map`s. At boot, a contract still `status:'analyzing'` means its in-flight promise died with the previous process; it's flipped to `'error'` (the frontend's existing error toast already handles that state — no new UI needed).
 
-### Current Implementation
-- Console logging for development
-- Error handling with try-catch blocks
-- Health check endpoint
+## Frontend render model
 
-### Recommended Additions
-- Structured logging (Winston/Pino)
-- Metrics collection (Prometheus)
-- Error tracking (Sentry)
-- APM integration (New Relic/DataDog)
+One `state` object; `render()` string-concatenates the current view's HTML and assigns it to `#app.innerHTML`, then re-attaches drag/drop and input handlers. No diffing. The one deliberate exception is chat token streaming: `handleSendChatMessage()` writes each token directly into a DOM node by id (`streaming-msg-content`) rather than calling `render()` per token, then does one full `render()` at completion — otherwise a multi-hundred-token answer would trigger a full innerHTML rebuild per token.
 
-## Testing Strategy
+## Known sharp edges for future work
 
-### Unit Tests (To Be Added)
-- API endpoint tests
-- Business logic tests
-- State management tests
-
-### Integration Tests (To Be Added)
-- End-to-end user flows
-- File upload tests
-- Chat interaction tests
-
-### Manual Testing Checklist
-- [ ] Upload contract for each role
-- [ ] Navigate between views
-- [ ] Switch contract role
-- [ ] Chat with AI assistant
-- [ ] Delete contract
-- [ ] View recent documents
-
-## License
-
-MIT License - See LICENSE file for details
+- BM25 is rebuilt (not persisted) on every hydrate — fine at current chunk counts, would need reconsideration at very large contract volumes.
+- No token-budget management beyond per-turn truncation; a very long conversation isn't summarized, just truncated to the last 8 turns.
+- `schema_version` table exists but no migration runner is wired up yet — schema changes today mean a manual `ALTER TABLE` or a fresh `data.sqlite`.

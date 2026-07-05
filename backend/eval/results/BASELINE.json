@@ -1,0 +1,28 @@
+{
+  "generatedAt": "2026-07-05T04:17:13.922Z",
+  "mode": "deterministic",
+  "datasetSize": 30,
+  "retrieval": {
+    "keyword": {
+      "hit4": 0.875,
+      "hit6": 0.9583333333333334,
+      "mrr": 0.7282407407407407
+    },
+    "bm25": {
+      "hit4": 0.875,
+      "hit6": 0.9166666666666666,
+      "mrr": 0.7472718253968252
+    },
+    "hybrid": {
+      "hit4": 0.9583333333333334,
+      "hit6": 0.9583333333333334,
+      "mrr": 0.8524305555555555
+    }
+  },
+  "notes": [
+    "Committed snapshot referenced by README.md's Evaluation section. Regenerate with `npm run eval` (deterministic, offline, ~1s).",
+    "This dataset was written and committed before any retrieval tuning against it — see README's honesty note about small-eval-set optimism bias.",
+    "keyword mode edges out bm25 on hit@6 (95.8% vs 91.7%) despite losing on hit@4 and MRR — a real result from this dataset, kept rather than hidden. hybrid wins outright on hit@4 and MRR, and ties for best on hit@6.",
+    "An --llm run (numeric grounding + citation verification) was attempted the same day but hit OpenRouter's free-tier daily rate limit (50 req/day) partway through; those non-deterministic LLM-quality numbers are not included in this baseline. See README's Known Limitations for the free-model trade-off."
+  ]
+}

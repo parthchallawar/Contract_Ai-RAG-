@@ -9,6 +9,7 @@ const { v4: uuidv4 } = require('uuid');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 const retrieval = require('./retrieval');
+const db = require('./db');
 
 function normalizeNumericSpacing(text) {
   if (!text) return '';
@@ -107,7 +108,7 @@ const analyses = new Map();
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), persistence: db.isEnabled() ? 'enabled' : 'disabled' });
 });
 
 // Get all contracts
@@ -163,6 +164,7 @@ app.post('/api/contracts/upload', upload.single('file'), (req, res) => {
     };
 
     contracts.set(contractId, contract);
+    db.saveContract(contract);
     console.log(`[${new Date().toISOString()}] Contract ${contractId} (${contract.name}) uploaded. Starting processing...`);
 
     // Run real analysis asynchronously
@@ -170,17 +172,22 @@ app.post('/api/contracts/upload', upload.single('file'), (req, res) => {
       console.log(`[${new Date().toISOString()}] Text extraction complete for ${contract.name}. Characters: ${text.length}`);
       contract.text = text;
       await ensureContractIndex(contract, text);
+      db.saveContract(contract);
+      if (contract.index) db.saveChunks(contract.id, contract.index.chunks, contract.index.embeddings);
 
       console.log(`[${new Date().toISOString()}] Starting AI analysis for ${contract.name}...`);
       const analysis = await analyzeDocumentText(text, contract);
-      
+
       contract.status = 'completed';
       contract.analysis = analysis;
       analyses.set(contractId, analysis);
+      db.saveContract(contract);
+      db.saveAnalysis(contractId, analysis);
       console.log(`[${new Date().toISOString()}] Analysis completed successfully for ${contract.name}.`);
     }).catch(err => {
       console.error(`[${new Date().toISOString()}] Processing failed for ${contract.name}:`, err);
       contract.status = 'error';
+      db.saveContract(contract);
     });
 
     res.json({
@@ -207,7 +214,7 @@ app.post('/api/contracts/:id/version', upload.single('file'), (req, res) => {
     if (!contract.versions) contract.versions = [];
 
     // Save current as previous version
-    contract.versions.push({
+    const previousVersion = {
       version: contract.versions.length + 1,
       name: contract.name,
       fileName: contract.fileName,
@@ -216,7 +223,9 @@ app.post('/api/contracts/:id/version', upload.single('file'), (req, res) => {
       fileSize: contract.fileSize,
       uploadDate: contract.uploadDate,
       analysis: contract.analysis
-    });
+    };
+    contract.versions.push(previousVersion);
+    db.saveVersion(contract.id, previousVersion.version, previousVersion);
 
     // Update with new file data
     contract.fileName = req.file.filename;
@@ -229,20 +238,27 @@ app.post('/api/contracts/:id/version', upload.single('file'), (req, res) => {
     const currentRole = req.body.role || contract.role;
     console.log(`[${new Date().toISOString()}] New version uploaded for ${contract.name}. Processing...`);
 
+    db.saveContract(contract);
+
     // Run real analysis asynchronously
     extractTextFromFile(contract.filePath).then(async (text) => {
       console.log(`[${new Date().toISOString()}] Version update: Text extracted for ${contract.name}.`);
       contract.text = text;
       await ensureContractIndex(contract, text);
+      db.saveContract(contract);
+      if (contract.index) db.saveChunks(contract.id, contract.index.chunks, contract.index.embeddings);
       // Re-run analysis logic over new text
       const analysis = await analyzeDocumentText(text, contract);
       contract.status = 'completed';
       contract.analysis = analysis;
       analyses.set(contract.id, analysis);
+      db.saveContract(contract);
+      db.saveAnalysis(contract.id, analysis);
       console.log(`[${new Date().toISOString()}] Version update completed for ${contract.name}.`);
     }).catch(err => {
       console.error(`[${new Date().toISOString()}] Version update failed for ${contract.name}:`, err);
       contract.status = 'error';
+      db.saveContract(contract);
     });
 
     res.json(contract);
@@ -298,6 +314,7 @@ app.patch('/api/contracts/:id/role', (req, res) => {
 
   contract.role = role;
   contract.status = 'analyzing';
+  db.saveContract(contract);
   console.log(`[${new Date().toISOString()}] Role updated to ${role} for ${contract.name}. Re-triggering analysis...`);
 
   // Run real analysis asynchronously
@@ -305,14 +322,19 @@ app.patch('/api/contracts/:id/role', (req, res) => {
     console.log(`[${new Date().toISOString()}] Re-analysis: Text extracted for ${contract.name}.`);
     contract.text = text;
     await ensureContractIndex(contract, text);
+    db.saveContract(contract);
+    if (contract.index) db.saveChunks(contract.id, contract.index.chunks, contract.index.embeddings);
     const analysis = await analyzeDocumentText(text, contract);
     contract.status = 'completed';
     contract.analysis = analysis;
     analyses.set(req.params.id, analysis);
+    db.saveContract(contract);
+    db.saveAnalysis(req.params.id, analysis);
     console.log(`[${new Date().toISOString()}] Re-analysis completed for ${contract.name}.`);
   }).catch(err => {
     console.error(`[${new Date().toISOString()}] Re-analysis failed for ${contract.name}:`, err);
     contract.status = 'error';
+    db.saveContract(contract);
   });
 
   res.json({ id: contract.id, role: contract.role, status: contract.status });
@@ -332,9 +354,36 @@ app.delete('/api/contracts/:id', (req, res) => {
 
   contracts.delete(req.params.id);
   analyses.delete(req.params.id);
+  db.deleteContract(req.params.id);
 
   res.json({ message: 'Contract deleted successfully' });
 });
+
+// Phase 4: last 50 chat messages for a contract, persisted across restarts.
+// Frontend loads this into state.chatMessages when opening an existing
+// contract; a fresh upload still starts with an empty conversation.
+app.get('/api/contracts/:id/chat', (req, res) => {
+  const contract = contracts.get(req.params.id);
+  if (!contract) {
+    return res.status(404).json({ error: 'Contract not found' });
+  }
+  res.json(db.getChatMessages(req.params.id, 50));
+});
+
+// Phase 4: persists both sides of a chat turn. Skips isLoading/streaming
+// placeholders by construction — callers only invoke this with a fully
+// resolved assistant message (the /api/chat/stream route only calls it at
+// its 'done' event, never mid-stream or on failure).
+function persistChatTurn(contractId, userMessage, assistantMessage) {
+  db.addChatMessage(contractId, 'user', userMessage, null);
+  if (assistantMessage) {
+    db.addChatMessage(contractId, 'assistant', assistantMessage.content, {
+      citations: assistantMessage.citations,
+      implications: assistantMessage.implications,
+      perspective: assistantMessage.perspective
+    });
+  }
+}
 
 // Chat endpoint for AI assistant
 app.post('/api/chat', async (req, res) => {
@@ -346,6 +395,7 @@ app.post('/api/chat', async (req, res) => {
   }
 
   const response = await generateChatResponse(message, contract, role, history);
+  persistChatTurn(contractId, message, response);
   res.json(response);
 });
 
@@ -397,6 +447,7 @@ app.post('/api/chat/stream', async (req, res) => {
       return res.end();
     }
 
+    persistChatTurn(contractId, message, result.message);
     sendEvent({ type: 'done', message: result.message });
     res.end();
   } catch (err) {
@@ -408,6 +459,23 @@ app.post('/api/chat/stream', async (req, res) => {
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'nemotron-3-nano-30b-a3b:free';
+
+// Optional fallback provider: NVIDIA NIM (build.nvidia.com), OpenAI-API-compatible.
+// Used only when OpenRouter fails BEFORE producing any content/token — e.g. the
+// free-tier daily rate limit. Both NIM_API_KEY and NIM_MODEL must be set for
+// this to activate; if either is missing, the app behaves exactly as before
+// (OpenRouter-only), matching the app's everywhere-degrade-don't-crash posture.
+const NIM_API_KEY = process.env.NIM_API_KEY || '';
+const NIM_MODEL = process.env.NIM_MODEL || '';
+
+const LLM_PROVIDERS = [
+  { name: 'openrouter', apiKey: OPENROUTER_API_KEY, model: OPENROUTER_MODEL, url: 'https://openrouter.ai/api/v1/chat/completions' },
+  { name: 'nim', apiKey: NIM_API_KEY, model: NIM_MODEL, url: 'https://integrate.api.nvidia.com/v1/chat/completions' }
+].filter((p) => p.apiKey && p.model);
+
+// Tracks JSON-mode support per provider independently — a model that rejects
+// response_format:json_object on one provider says nothing about another.
+const jsonModeUnsupportedByProvider = new Map();
 
 const CHAT_STOPWORDS = new Set([
   'the', 'and', 'but', 'for', 'with', 'that', 'this', 'from', 'into', 'about', 'what', 'why', 'how', 'can',
@@ -691,82 +759,96 @@ function extractMonetaryCandidates(text, limit = 160) {
 }
 
 // ---------------------------------------------------------------------------
-// Single OpenRouter call helper: timeout, retry-with-backoff, and JSON mode
-// with automatic fallback for models that reject `response_format`.
+// LLM call helper: timeout, retry-with-backoff, JSON mode with automatic
+// fallback for models that reject `response_format`, and provider fallback
+// (OpenRouter -> NIM, if NIM is configured) when a provider is unavailable.
 // ---------------------------------------------------------------------------
 
-// Once we learn the configured model rejects response_format:json_object,
-// stop trying it on subsequent calls (avoids wasting a request per call).
-let jsonModeUnsupported = false;
+async function attemptProviderOnce(provider, messages, useJsonMode, timeoutMs) {
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const body = { model: provider.model, messages };
+    if (useJsonMode) {
+      body.response_format = { type: 'json_object' };
+    }
 
+    const response = await fetch(provider.url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${provider.apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      // JSON mode itself might be rejected (4xx, excluding 429 rate-limits)
+      // by a model that doesn't support it — signal the caller to
+      // immediately retry without it, rather than burning a retry attempt
+      // on a doomed request shape.
+      if (useJsonMode && response.status >= 400 && response.status < 500 && response.status !== 429) {
+        return { unsupported: true };
+      }
+      console.error(`${provider.name} error: ${response.status} ${response.statusText}`, errorText);
+      return { failed: true, status: response.status };
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    if (!content) return { failed: true };
+    return { content };
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.error(`${provider.name} call timed out after ${timeoutMs}ms`);
+    } else {
+      console.error(`${provider.name} call error:`, error);
+    }
+    return { failed: true };
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+}
+
+// Iterates configured providers in order (OpenRouter first, then NIM if
+// configured). A 429/5xx response moves on to the next provider immediately
+// instead of burning retries against a quota that won't refill in seconds;
+// other failures still get the existing backoff-and-retry treatment on the
+// SAME provider first. Returns null only if every configured provider (and
+// all of their retries) failed, or none are configured at all.
 async function callOpenRouter(messages, { expectJson = true, retries = 1, timeoutMs = 90000 } = {}) {
-  if (!OPENROUTER_API_KEY) return null;
+  if (LLM_PROVIDERS.length === 0) return null;
 
-  const attemptOnce = async (useJsonMode) => {
-    const controller = new AbortController();
-    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const body = { model: OPENROUTER_MODEL, messages };
-      if (useJsonMode) {
-        body.response_format = { type: 'json_object' };
+  for (const provider of LLM_PROVIDERS) {
+    let jsonModeUnsupported = jsonModeUnsupportedByProvider.get(provider.name) || false;
+    const maxAttempts = retries + 1;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      let result = await attemptProviderOnce(provider, messages, expectJson && !jsonModeUnsupported, timeoutMs);
+
+      if (result.unsupported) {
+        jsonModeUnsupported = true;
+        jsonModeUnsupportedByProvider.set(provider.name, true);
+        result = await attemptProviderOnce(provider, messages, false, timeoutMs);
       }
 
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        // JSON mode itself might be rejected (4xx) by a model that doesn't
-        // support it — signal the caller to immediately retry without it,
-        // rather than burning a retry attempt on a doomed request shape.
-        if (useJsonMode && response.status >= 400 && response.status < 500) {
-          return { unsupported: true };
-        }
-        console.error(`OpenRouter error: ${response.status} ${response.statusText}`, errorText);
-        return { failed: true };
+      if (result.content) {
+        if (!expectJson) return result.content;
+        const parsed = parseJsonResponse(result.content, null);
+        if (parsed) return parsed;
+        // Malformed JSON from the model — fall through to retry below.
       }
 
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content || '';
-      if (!content) return { failed: true };
-      return { content };
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        console.error(`OpenRouter call timed out after ${timeoutMs}ms`);
-      } else {
-        console.error('OpenRouter call error:', error);
+      if (result.status === 429 || (result.status && result.status >= 500)) {
+        console.warn(`[llm] ${provider.name} unavailable (${result.status}) — trying next provider if configured.`);
+        break;
       }
-      return { failed: true };
-    } finally {
-      clearTimeout(timeoutHandle);
-    }
-  };
 
-  const maxAttempts = retries + 1;
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    let result = await attemptOnce(expectJson && !jsonModeUnsupported);
-
-    if (result.unsupported) {
-      jsonModeUnsupported = true;
-      result = await attemptOnce(false);
-    }
-
-    if (result.content) {
-      if (!expectJson) return result.content;
-      const parsed = parseJsonResponse(result.content, null);
-      if (parsed) return parsed;
-      // Malformed JSON from the model — fall through to retry below.
-    }
-
-    if (attempt < maxAttempts - 1) {
-      await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
+      if (attempt < maxAttempts - 1) {
+        await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
+      }
     }
   }
 
@@ -803,81 +885,87 @@ function parseSseChunk(buffer, chunkText) {
 
 // Streams a chat completion, invoking `onToken(text)` per delta. Retry
 // semantics deliberately differ from callOpenRouter: a failure is only
-// retried if it happens BEFORE the first token is emitted (nothing has been
-// shown to the client yet, so a silent retry is safe); once a token has
-// flowed, the caller is committed and must surface an error instead.
-async function callOpenRouterStream(messages, { onToken, timeoutMs = 90000, retries = 1, signal } = {}) {
-  if (!OPENROUTER_API_KEY) return { failed: true, beforeFirstToken: true };
+// retried (same provider, then the next configured provider) if it happens
+// BEFORE the first token is emitted — nothing has been shown to the client
+// yet, so a silent retry/hand-off is safe. Once a token has flowed, the
+// caller is committed to that provider's answer and must surface an error
+// instead of switching providers mid-stream (which would produce mixed,
+// confusing partial content).
+async function attemptProviderStreamOnce(provider, messages, timeoutMs, signal, onToken) {
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+  const onExternalAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', onExternalAbort, { once: true });
+  }
 
-  const attemptOnce = async () => {
-    const controller = new AbortController();
-    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
-    const onExternalAbort = () => controller.abort();
-    if (signal) {
-      if (signal.aborted) controller.abort();
-      else signal.addEventListener('abort', onExternalAbort, { once: true });
+  let firstTokenReceived = false;
+  let fullContent = '';
+
+  try {
+    const response = await fetch(provider.url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${provider.apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ model: provider.model, messages, stream: true }),
+      signal: controller.signal
+    });
+
+    if (!response.ok || !response.body) {
+      const errorText = await response.text().catch(() => '');
+      console.error(`${provider.name} stream error: ${response.status} ${response.statusText}`, errorText);
+      return { failed: true, beforeFirstToken: true, status: response.status };
     }
 
-    let firstTokenReceived = false;
-    let fullContent = '';
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
 
-    try {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ model: OPENROUTER_MODEL, messages, stream: true }),
-        signal: controller.signal
-      });
-
-      if (!response.ok || !response.body) {
-        const errorText = await response.text().catch(() => '');
-        console.error(`OpenRouter stream error: ${response.status} ${response.statusText}`, errorText);
-        return { failed: true, beforeFirstToken: true };
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunkText = decoder.decode(value, { stream: true });
-        const parsed = parseSseChunk(buffer, chunkText);
-        buffer = parsed.buffer;
-        for (const evt of parsed.events) {
-          const delta = evt.choices?.[0]?.delta?.content;
-          if (delta) {
-            firstTokenReceived = true;
-            fullContent += delta;
-            if (onToken) onToken(delta);
-          }
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunkText = decoder.decode(value, { stream: true });
+      const parsed = parseSseChunk(buffer, chunkText);
+      buffer = parsed.buffer;
+      for (const evt of parsed.events) {
+        const delta = evt.choices?.[0]?.delta?.content;
+        if (delta) {
+          firstTokenReceived = true;
+          fullContent += delta;
+          if (onToken) onToken(delta);
         }
       }
-
-      return { content: fullContent };
-    } catch (error) {
-      const label = error.name === 'AbortError' ? 'aborted' : 'errored';
-      console.error(`OpenRouter stream ${label}${firstTokenReceived ? ' (after tokens flowed)' : ' (before first token)'}:`, error.message);
-      return { failed: true, beforeFirstToken: !firstTokenReceived, partialContent: fullContent };
-    } finally {
-      clearTimeout(timeoutHandle);
-      if (signal) signal.removeEventListener('abort', onExternalAbort);
     }
-  };
+
+    return { content: fullContent };
+  } catch (error) {
+    const label = error.name === 'AbortError' ? 'aborted' : 'errored';
+    console.error(`${provider.name} stream ${label}${firstTokenReceived ? ' (after tokens flowed)' : ' (before first token)'}:`, error.message);
+    return { failed: true, beforeFirstToken: !firstTokenReceived, partialContent: fullContent };
+  } finally {
+    clearTimeout(timeoutHandle);
+    if (signal) signal.removeEventListener('abort', onExternalAbort);
+  }
+}
+
+async function callOpenRouterStream(messages, { onToken, timeoutMs = 90000, retries = 1, signal } = {}) {
+  if (LLM_PROVIDERS.length === 0) return { failed: true, beforeFirstToken: true };
 
   let lastResult;
-  const maxAttempts = retries + 1;
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    lastResult = await attemptOnce();
-    if (lastResult.content !== undefined) return lastResult;
-    if (!lastResult.beforeFirstToken) return lastResult;
-    if (attempt < maxAttempts - 1) {
-      await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+  for (const provider of LLM_PROVIDERS) {
+    const maxAttempts = retries + 1;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      lastResult = await attemptProviderStreamOnce(provider, messages, timeoutMs, signal, onToken);
+      if (lastResult.content !== undefined) return lastResult;
+      if (!lastResult.beforeFirstToken) return lastResult; // tokens already flowed — committed to this provider
+      if (attempt < maxAttempts - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+      }
     }
+    console.warn(`[llm-stream] ${provider.name} unavailable before any token — trying next provider if configured.`);
   }
   return lastResult;
 }
@@ -988,7 +1076,7 @@ function verifyMonetaryItems(parsed, candidates) {
 }
 
 async function selectMonetaryExposureWithLLM(candidates) {
-  if (!OPENROUTER_API_KEY) return null;
+  if (LLM_PROVIDERS.length === 0) return null;
   if (!Array.isArray(candidates) || candidates.length === 0) return null;
 
   const systemPrompt = `You are a contract analyst specialized in financial risk. 
@@ -1344,8 +1432,8 @@ async function retrieveTopChunks(contract, queryText, k) {
 // PM RAG Logic
 async function generatePMInsightsWithRAG(text, contract) {
   try {
-    if (!OPENROUTER_API_KEY) {
-      console.error("CRITICAL: No OPENROUTER_API_KEY found. PM analysis cannot proceed.");
+    if (LLM_PROVIDERS.length === 0) {
+      console.error("CRITICAL: No LLM provider configured (OPENROUTER_API_KEY or NIM_API_KEY+NIM_MODEL). PM analysis cannot proceed.");
       return null;
     }
 
@@ -1403,8 +1491,8 @@ function getFallbackPMInsights() {
 // Legal RAG Logic
 async function generateLegalInsightsWithRAG(text, contract) {
   try {
-    if (!OPENROUTER_API_KEY) {
-      console.error("CRITICAL: No OPENROUTER_API_KEY found. Legal analysis cannot proceed.");
+    if (LLM_PROVIDERS.length === 0) {
+      console.error("CRITICAL: No LLM provider configured (OPENROUTER_API_KEY or NIM_API_KEY+NIM_MODEL). Legal analysis cannot proceed.");
       return null;
     }
 
@@ -1870,8 +1958,8 @@ function chatErrorMessage(content, role, contract) {
 
 // Generate chat response dynamically based on text (non-streaming path).
 async function generateChatResponse(message, contract, role, rawHistory) {
-  if (!OPENROUTER_API_KEY) {
-    return chatErrorMessage('ERROR: OpenRouter API key is not configured. AI chat is unavailable.', role, contract);
+  if (LLM_PROVIDERS.length === 0) {
+    return chatErrorMessage('ERROR: No LLM provider is configured. AI chat is unavailable.', role, contract);
   }
 
   const { messages, text } = await buildChatMessages(message, contract, role, rawHistory);
@@ -1888,8 +1976,8 @@ async function generateChatResponse(message, contract, role, rawHistory) {
 // the returned `message` (on success) is the same final shape as
 // generateChatResponse's return value, built once streaming completes.
 async function generateChatResponseStream(message, contract, role, rawHistory, { onToken, signal } = {}) {
-  if (!OPENROUTER_API_KEY) {
-    return { failed: true, errorMessage: 'OpenRouter API key is not configured. AI chat is unavailable.' };
+  if (LLM_PROVIDERS.length === 0) {
+    return { failed: true, errorMessage: 'No LLM provider is configured. AI chat is unavailable.' };
   }
 
   const { messages, text } = await buildChatMessages(message, contract, role, rawHistory);
@@ -1915,8 +2003,74 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
+// Phase 4: rehydrates the in-memory contracts/analyses Maps from SQLite at
+// boot. Synchronous (better-sqlite3 is sync) so it completes before the
+// server starts accepting connections — no race with the first request.
+function hydrateFromDb() {
+  const persistenceEnabled = db.init();
+  if (!persistenceEnabled) {
+    console.log('[boot] Persistence disabled (better-sqlite3 unavailable) — running memory-only.');
+    return;
+  }
+
+  const { contracts: rows, analyses: analysisMap } = db.hydrateAll();
+  for (const row of rows) {
+    const contract = {
+      id: row.id,
+      name: row.name,
+      fileName: row.fileName,
+      originalName: row.originalName,
+      filePath: row.filePath,
+      fileSize: row.fileSize,
+      uploadDate: row.uploadDate,
+      status: row.status,
+      role: row.role,
+      text: row.text
+    };
+
+    // A contract stuck 'analyzing' means its in-flight promise died with the
+    // previous process — there is no way to resume it, so this is the
+    // honest state (the frontend's existing error toast already handles it).
+    if (contract.status === 'analyzing') {
+      contract.status = 'error';
+    }
+
+    if (row.filePath && !fs.existsSync(row.filePath)) {
+      console.warn(`[boot] Contract ${contract.id} (${contract.name}) file missing on disk: ${row.filePath}`);
+    }
+
+    const chunkRows = db.getContractChunks(contract.id);
+    if (chunkRows.length > 0) {
+      const chunks = chunkRows.map((c) => ({ id: c.id, start: c.start, text: c.text }));
+      const allEmbedded = chunkRows.every((c) => c.embedding !== null);
+      contract.index = {
+        chunks,
+        embeddings: allEmbedded ? chunkRows.map((c) => c.embedding) : null,
+        bm25: retrieval.buildBM25Index(chunks),
+        textHash: row.textHash
+      };
+    }
+
+    const versions = db.getVersions(contract.id);
+    if (versions.length > 0) contract.versions = versions;
+
+    const analysis = analysisMap.get(contract.id);
+    if (analysis) {
+      contract.analysis = analysis;
+      analyses.set(contract.id, analysis);
+    }
+
+    contracts.set(contract.id, contract);
+  }
+
+  if (rows.length > 0) {
+    console.log(`[boot] Hydrated ${rows.length} contract(s) from SQLite (indexes rebuilt from stored chunks, no re-embedding).`);
+  }
+}
+
 // Start server (skipped when required as a module, e.g. by test-calculations.js)
 if (require.main === module) {
+  hydrateFromDb();
   app.listen(PORT, () => {
     console.log(`Legal Counsel Analysis server running on http://localhost:${PORT}`);
     console.log(`Serving frontend from: ${path.join(__dirname, '../frontend')}`);
@@ -1938,5 +2092,13 @@ module.exports = {
   sanitizeChatHistory,
   parseChatAnswer,
   verifyQuote,
-  parseSseChunk
+  parseSseChunk,
+  normalizeForQuoteMatch,
+  generateChatResponse,
+  // Phase 4: eval harness needs the actual Phase 0/2 code paths, not
+  // reimplementations, so the mode comparison and grounding checks are real.
+  chunkText,
+  scoreChunkByKeywords,
+  extractChatKeywords,
+  selectMonetaryExposureWithLLM
 };

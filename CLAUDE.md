@@ -4,14 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-An AI-powered legal contract analysis web app. A user uploads a contract (PDF/DOCX/DOC/TXT),
-the backend extracts the text and runs it through an LLM (via OpenRouter) to produce
-**role-specific** analysis, and a single-page vanilla-JS frontend renders that analysis in
-five perspectives: Upload, Investor, Legal, PM, Partner, plus a role-aware AI Chat.
+An AI-powered contract analysis web app with a real hybrid-retrieval RAG pipeline (local
+embeddings + BM25, fused with Reciprocal Rank Fusion), verified numeric grounding, streaming
+chat with conversation memory and verified citations, and SQLite persistence. A user uploads a
+contract (PDF/DOCX/DOC/TXT), the backend extracts and indexes the text and runs it through an
+LLM (via OpenRouter) to produce **role-specific** analysis, and a single-page vanilla-JS frontend
+renders that analysis in five perspectives: Upload, Investor, Legal, PM, Partner, plus a
+role-aware, citation-verified AI Chat.
 
-Note: `README.md`, `ARCHITECTURE.md`, `QUICKSTART.md`, and `IMPLEMENTATION_SUMMARY.md` are
-**partly stale** — they describe a "mock AI" and port 3000. The real code calls OpenRouter and
-defaults to **port 8080**. Trust the source, not those docs, when they conflict.
+`README.md` and `ARCHITECTURE.md` are current as of the last phase (persistence + eval harness).
+`QUICKSTART.md` and `IMPLEMENTATION_SUMMARY.md` are superseded stubs pointing at `README.md` —
+don't add new content to them.
 
 ## Commands
 
@@ -19,118 +22,132 @@ All backend commands run from the `backend/` directory:
 
 ```bash
 cd backend
-npm install            # install deps (express, multer, cors, uuid, pdf-parse, mammoth)
-npm start              # node server.js  -> http://localhost:8080
-npm run dev            # nodemon server.js (auto-reload)
+npm install             # installs deps incl. @xenova/transformers, better-sqlite3
+cp .env.example .env    # then edit .env and add OPENROUTER_API_KEY
+npm start                # node server.js  -> http://localhost:8080
+npm run dev              # nodemon server.js (auto-reload)
+npm test                 # test-retrieval.js + test-calculations.js + test-chat-parse.js (deterministic, no network)
+npm run eval              # backend/eval/run-eval.js — retrieval hit-rate/MRR, offline, ~1s
+npm run eval:llm          # + numeric grounding + chat citation checks (uses OpenRouter, non-deterministic)
 ```
 
-- **Config**: `backend/.env` (loaded manually via `process.env` — there is NO dotenv package,
-  so env vars must be exported in the shell or set by the host). Keys: `OPENROUTER_API_KEY`
-  (required for any AI output — analysis throws and chat returns an error string without it),
-  `OPENROUTER_MODEL` (default `nemotron-3-nano-30b-a3b:free`), `PORT` (default 8080).
-  On Windows PowerShell: `$env:OPENROUTER_API_KEY="sk-..."; npm start`.
-- **Smoke-test the LLM**: `node test-openrouter.js` from repo root (needs `OPENROUTER_API_KEY` in env).
-- **There is no test suite, linter, or build step.** The root `package.json` lists only
-  `@playwright/test` as a dev dep but no test files or scripts exist. The frontend is served
-  statically — no bundler, no transpile.
-- **Health check**: `curl http://localhost:8080/api/health`
+- **Config**: `backend/.env` (loaded via `dotenv`, copy from `backend/.env.example`). Keys:
+  `OPENROUTER_API_KEY` (required for any AI output — chat/analysis degrade to error messages
+  without it, they don't crash), `OPENROUTER_MODEL` (default `nemotron-3-nano-30b-a3b:free` —
+  free-tier, 50 req/day, noticeably flakier structured output than a paid model), optionally
+  `NIM_API_KEY`+`NIM_MODEL` (NVIDIA NIM as an automatic fallback provider — see `LLM_PROVIDERS`
+  in `server.js`; OpenRouter is always tried first, NIM only kicks in if OpenRouter fails before
+  producing any content, e.g. its daily quota is exhausted), `PORT` (default 8080).
+- **Health check**: `curl http://localhost:8080/api/health` → includes `persistence: 'enabled'|'disabled'`.
+- **Root `package.json`** is now just a repo-root placeholder (no deps) — all real deps live in `backend/`.
 
 ## Architecture
 
-Two pieces, no framework on either side:
+See `ARCHITECTURE.md` for the deep dive (data flow, RRF/BM25 math, DB schema). Summary:
 
-### Backend — `backend/server.js` (single file, ~1000 lines)
+### Backend — `backend/server.js` (single file, chat/analysis/persistence routes) + `backend/retrieval.js` + `backend/db.js`
 
-Express server that also serves the frontend statically (`express.static('../frontend')`) and
-falls back to `index.html` for all non-API routes (SPA routing). **All state is in-memory** via
-two `Map`s (`contracts`, `analyses`) keyed by UUID — data is lost on restart. Uploaded files
-land in `backend/uploads/` with a `${uuid}-${originalname}` name.
+Express server that also serves the frontend statically and falls back to `index.html` for SPA
+routing. **In-memory `Map`s (`contracts`, `analyses`) are still the runtime read path**; every
+mutation also write-throughs to SQLite (`backend/db.js`, `better-sqlite3`, WAL mode) so state
+survives a restart. If `better-sqlite3` fails to load, `db.js`'s functions become no-ops and the
+app runs memory-only — it must never fail to start because of the database.
 
-The analysis pipeline is the heart of the app. On upload (and on role change / new version),
-processing runs **asynchronously after the HTTP response returns** — the contract is created
-with `status: 'analyzing'`, and the frontend polls `/api/contracts/:id/analysis` (returns
-HTTP 202 while pending) until `status: 'completed'` (or `'error'`). Flow:
+On upload (and on role change / new version), processing runs **asynchronously after the HTTP
+response returns** — the contract is created with `status: 'analyzing'`, and the frontend polls
+`/api/contracts/:id/analysis` (returns HTTP 202 while pending) until `status: 'completed'` (or
+`'error'`). Flow:
 
-1. `extractTextFromFile()` — dispatches by extension: `pdf-parse` for PDF (with a custom
-   `pagerender` that joins text items with spaces), `mammoth` for DOCX/DOC, raw read for TXT.
-   All output passes through `normalizeNumericSpacing()`, which strips the stray spaces PDFs
-   insert inside numbers/currency/percentages (critical — PDF extraction mangles `$1,000` into
-   `$1 000`, so much of the numeric code re-collapses `(\d)\s+(?=\d)`).
-2. `analyzeDocumentText(text, contract)` orchestrates three LLM calls and assembles ONE flat
-   `baseAnalysis` object containing fields for every role/view (investor, legal, PM all in one
-   object — the frontend picks what it needs per view):
-   - `selectMonetaryExposureWithLLM()` — feeds `extractMonetaryCandidates()` (regex-found money
-     strings + 70-char surrounding context) to the LLM, which classifies each into `risks` vs
-     `obligations`. **Amounts are summed locally in JS, not by the LLM**, for accuracy →
-     `totalPotentialLoss` / `totalAmountOwed`, which feed `computeLossGivenDefaultScore()`.
-   - `generateLegalInsightsWithRAG()` and `generatePMInsightsWithRAG()` — poor-man's RAG:
-     chunk text (1500 chars), score each chunk by keyword hits for that role, take top 4 chunks,
-     send to the LLM with a strict JSON schema. Legal insights must include verbatim `quote`
-     substrings as evidence.
-   - Regex `extractRiskSignals()` derives boolean flags (termination-for-convenience, uncapped
-     liability, GDPR mention, etc.) that build the static `riskFactors` array.
-   - If either RAG call returns null (e.g. missing API key), `analyzeDocumentText` **throws**,
-     setting the contract to `status: 'error'`.
+1. `extractTextFromFile()` — `pdf-parse` (custom `pagerender`), `mammoth`, or raw read, all
+   through `normalizeNumericSpacing()` (PDF extraction mangles `$1,000` into `$1 000`; numeric
+   code re-collapses `(\d)\s+(?=\d)` in several places).
+2. `ensureContractIndex()` — clause-aware `chunkText()` (headings/paragraphs first, sentence
+   fallback, never mid-sentence), then `retrieval.buildContractIndex()`: BM25 posting +
+   local MiniLM embeddings (`Xenova/all-MiniLM-L6-v2`, null on embedder failure). Skipped if
+   `sha256(text)` is unchanged from last time (role switches re-extract the same file).
+3. `analyzeDocumentText(text, contract)` orchestrates three LLM calls into ONE flat
+   `baseAnalysis` object (investor/legal/PM fields all together — the frontend picks what it
+   needs per view):
+   - `selectMonetaryExposureWithLLM()` — LLM classifies `extractMonetaryCandidates()` output
+     into risks/obligations; **JS sums locally**, and `verifyMonetaryItems()` grounds every
+     classified amount against the source text before it counts (hallucinated/duplicate items
+     dropped, logged into `analysisWarnings`, never silently skew a total).
+   - `generateLegalInsightsWithRAG()` / `generatePMInsightsWithRAG()` — hybrid-retrieved context
+     (`retrieval.hybridRetrieve`, falls back to BM25-only, then Phase-0 keyword scoring) sent to
+     the LLM with a strict JSON schema. Legal insights include verbatim `quote` substrings.
+   - `extractRiskSignals()` — regex-derived boolean flags feeding the static `riskFactors` array.
+   - RAG/monetary failures degrade to safe fallback defaults + an `analysisWarnings` entry —
+     they no longer throw the whole analysis into `status: 'error'`.
 
-LLM plumbing helpers you'll reuse: `parseJsonResponse` / `cleanJsonResponse` (strip ```` ```json ````
-fences and slice to the outer `{...}` — models are unreliable about clean JSON), `parseNumericAmount`
-(handles `$`, `USD`, `k`/`m`/`b`, `thousand`/`million`/`billion`), `clampScore`, `normalizeRiskLevel`.
+LLM plumbing: `parseJsonResponse`/`cleanJsonResponse` (strip ```` ```json ```` fences), `callOpenRouter`
+(JSON-mode retry/fallback) and `callOpenRouterStream` (SSE, retries only before the first token),
+`parseNumericAmount`, `clampScore`, `normalizeRiskLevel`.
 
-`generateChatResponse()` is separate: it builds context via `buildRelevantContext()`
-(keyword-scored chunking of the whole contract, stopwords filtered) and asks the LLM for a JSON
-answer with verbatim `citations` and `implications`. Every failure path returns a well-formed
-message object with an `ERROR:` `content` string rather than throwing.
+**Chat** (`generateChatResponse` / `generateChatResponseStream`) is history-aware (last 8 turns,
+server re-validates independently via `sanitizeChatHistory` — never trusts the client) and uses a
+plain-text protocol (`answer / SOURCES: / IMPLICATIONS:`) instead of JSON — `parseChatAnswer()`
+tolerantly splits it. Every cited quote runs through `verifyQuote()` (whitespace/quote-normalized
+substring match with offset mapping back to the original text, 8-word-prefix retry for padded
+quotes); unverifiable quotes are dropped, never shown. `/api/chat/stream` streams over SSE
+(`parseSseChunk` buffers partial upstream lines); `/api/chat` is the non-streaming regression path
+— both share the same prompt-building/finalization code.
 
-### Frontend — `frontend/index.html` + `frontend/js/app.js` (~1500 lines)
+### Frontend — `frontend/index.html` + `frontend/js/app.js`
 
-No build, no framework. `index.html` loads Tailwind (CDN), Inter + Material Symbols, and one
-script. `app.js` is a hand-rolled SPA:
+No build, no framework. Single `state` object; `render()` string-concatenates the current view's
+HTML and assigns to `#app.innerHTML` — no diffing, every state change re-renders. Functions
+invoked from markup use inline `onclick="..."`, so renderer/handler functions must stay global.
+The one exception to "always full render()": chat token streaming writes directly into a DOM
+node by id (`streaming-msg-content`) per token, then does one full render() at completion.
 
-- **Single `state` object** (top of file) holds `currentView`, `selectedRole`, the current
-  contract/analysis, chat messages, and per-view tab state (`investorTab`, `legalTab`, `pmTab`).
-- **`render()`** is the whole render loop: it string-concatenates `renderHeader()` + one
-  `renderXView()` (switch on `state.currentView`) + `renderFooter()` and assigns to
-  `#app.innerHTML`. **Every state change calls `render()`**, which re-blows-away and rebuilds the
-  DOM — there is no diffing. After render it re-attaches drag/drop and click handlers for the
-  upload view. Functions invoked from markup are called via inline `onclick="..."`, so renderer
-  functions and their handlers must stay on the global scope.
 - **View renderers**: `renderUploadView`, `renderInvestorView`, `renderLegalView`, `renderPMView`,
-  `renderPartnerView`, `renderChatView` (plus `renderLoadingView`). Each reads the one flat
-  analysis object and shows its slice.
+  `renderPartnerView`, `renderChatView` (+ `renderLoadingView`, `renderExtractedTextPanel`).
+- **Citation highlight**: clicking a chat citation chip opens the extracted-text panel and wraps
+  the matched quote in `<mark id="citation-highlight">` using a client-side mirror of the
+  server's `verifyQuote` normalizer (`normalizeForQuoteMatch`/`findQuoteOffsetWithFallback`) —
+  keep these two implementations behaviorally identical if either changes.
 - **API client**: `fetchContracts`, `uploadContract`, `uploadNewVersionAPI`, `getAnalysis`,
-  `getContractText`, `updateContractRole`, `sendChatMessageAPI`, and `pollAnalysis` (the loop
-  that waits out `status: 'analyzing'`). `API_BASE = '/api'` (same origin — the backend serves
-  the frontend, so no CORS/port juggling in normal use).
+  `getContractText`, `getChatHistory` (loads persisted messages on `openContract()`),
+  `updateContractRole`, `sendChatMessageAPI`, `streamChatMessageAPI` (SSE client with transparent
+  fallback to `sendChatMessageAPI` if no token ever arrives), and `pollAnalysis`.
 
 ## API surface (all under `/api`)
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/health` | `{status, timestamp}` |
+| GET | `/health` | `{status, timestamp, persistence}` |
 | GET | `/contracts` | list (summary fields only) |
 | GET | `/contracts/:id` | full contract record |
 | GET | `/contracts/:id/file` | streams the stored upload |
-| POST | `/contracts/upload` | multipart `file` + `role`; returns immediately, analysis runs async |
-| POST | `/contracts/:id/version` | new version; pushes prior state onto `contract.versions[]`, re-analyzes |
+| POST | `/contracts/upload` | multipart `file` + `role`; analysis runs async |
+| POST | `/contracts/:id/version` | new version; prior version snapshotted, re-analyzes |
 | GET | `/contracts/:id/analysis` | **202 while analyzing**, 200 with analysis when done |
-| GET | `/contracts/:id/text` | extracted text + `numericFigures` (202 while extracting) |
+| GET | `/contracts/:id/text` | extracted text + `numericFigures` |
 | PATCH | `/contracts/:id/role` | change role, re-runs full analysis async |
-| DELETE | `/contracts/:id` | removes record + unlinks file |
-| POST | `/chat` | `{contractId, message, role}` → LLM answer with citations |
+| DELETE | `/contracts/:id` | removes record, file, and all persisted DB rows |
+| GET | `/contracts/:id/chat` | last 50 persisted chat messages |
+| POST | `/chat` | `{contractId, message, role, history}` → answer with verified citations |
+| POST | `/chat/stream` | same, over SSE (`token`/`done`/`error` events) |
 
 ## Gotchas & conventions
 
 - **Upload allow-list**: `.pdf, .docx, .doc, .txt`, 50 MB max (multer `fileFilter`/`limits`).
 - **The analysis object is intentionally flat and shared across roles** — when adding a field for
   one view, add it in `analyzeDocumentText`'s `baseAnalysis` and read it in the relevant renderer.
-- **Roles**: code paths mention Investor, Legal, PM, Partner, HR. `selectedRole` defaults to
-  `Legal`; `currentView` defaults to `upload`. There is a `renderPartnerView` but no dedicated
-  backend Partner analysis branch — Partner reuses the shared analysis fields.
-- **PDF number corruption** is a recurring source of bugs — anytime you touch numeric extraction,
-  run text through the `(\d)\s+(?=\d)` collapse (see `normalizeNumericSpacing`, `extractNumericFigures`).
-- **No persistence / no auth / single process.** Restarting the server clears all contracts;
-  `uploads/` files persist on disk but their in-memory records don't.
+- **Roles**: Investor, Legal, PM, Partner, HR appear in code paths. `selectedRole` defaults to
+  `Legal`; `currentView` defaults to `upload`. `renderPartnerView` has no dedicated backend
+  branch — Partner reuses the shared analysis fields.
+- **PDF number corruption** recurs — anytime you touch numeric extraction, run text through the
+  `(\d)\s+(?=\d)` collapse (see `normalizeNumericSpacing`, `extractNumericFigures`).
+- **Persistence is write-through, not the source of truth at runtime** — the in-memory Maps are
+  still what every route reads; `db.js` mirrors writes and rehydrates at boot. Don't add a new
+  mutation site without also adding its `db.save*`/`db.delete*` call, or it'll silently not survive a restart.
+- **Both `verifyQuote` (server) and `normalizeForQuoteMatch`/`findQuoteOffsetWithFallback`
+  (client) implement the same normalization** — they're deliberately duplicated (no shared module
+  between frontend/backend in this vanilla setup), so changes to one's normalization logic need
+  the mirror updated too.
 - **The `*_1` / `*_2` top-level directories** (e.g. `legal_counsel_analysis_view_1/`) are the
   original static "stitch" design mockups (`code.html` + `screen.png`) the real views were built
-  from. They are reference-only design artifacts, not part of the running app.
-- `2026-02-27_21-07-59-dump.json` at repo root is a data dump, not code.
+  from — reference-only, not part of the running app.
+- **`backend/eval/fixtures/*.txt` are synthetic and PII-free by design** — never point the eval
+  harness at `backend/uploads/` (real, git-ignored personal documents).

@@ -5,6 +5,16 @@ package-lock.json
 # Local embedding model cache (~25MB, re-downloaded on demand)
 .models/
 
+# SQLite persistence (Phase 4) — local data, not shared via git
+data.sqlite
+data.sqlite-wal
+data.sqlite-shm
+
+# Eval run outputs (Phase 4) — timestamped runs are throwaway; the committed
+# baseline snapshot referenced by README.md is the one exception
+eval/results/*
+!eval/results/BASELINE.json
+
 # Logs
 logs/
 *.log

@@ -1,0 +1,242 @@
+[
+  {
+    "id": "saas-01",
+    "fixture": "saas-agreement.txt",
+    "type": "retrieval",
+    "question": "What is the monthly subscription fee?",
+    "gold": ["four thousand dollars ($4,000)"],
+    "notes": "direct lexical"
+  },
+  {
+    "id": "saas-02",
+    "fixture": "saas-agreement.txt",
+    "type": "retrieval",
+    "question": "What is the initial subscription term length?",
+    "gold": ["twelve (12) months"],
+    "notes": "direct lexical"
+  },
+  {
+    "id": "saas-03",
+    "fixture": "saas-agreement.txt",
+    "type": "retrieval",
+    "question": "Can the customer cancel whenever they want?",
+    "gold": ["may end this Agreement at its convenience", "thirty (30) days"],
+    "notes": "paraphrase trap — question says 'cancel', text says 'end...at its convenience'; no shared keywords"
+  },
+  {
+    "id": "saas-04",
+    "fixture": "saas-agreement.txt",
+    "type": "retrieval",
+    "question": "How is Customer's liability capped under this agreement?",
+    "gold": ["twelve (12) months immediately preceding"],
+    "notes": "direct, tests the liability-cap clause"
+  },
+  {
+    "id": "saas-05",
+    "fixture": "saas-agreement.txt",
+    "type": "retrieval",
+    "question": "What percentage uptime does the provider guarantee?",
+    "gold": ["99.9%"],
+    "notes": "direct lexical, numeric-in-text"
+  },
+  {
+    "id": "saas-06",
+    "fixture": "saas-agreement.txt",
+    "type": "retrieval",
+    "question": "How quickly must the provider notify the customer after a data breach?",
+    "gold": ["notify Customer without undue delay", "seventy-two (72) hours"],
+    "notes": "direct, some keyword overlap (breach)"
+  },
+  {
+    "id": "saas-07",
+    "fixture": "saas-agreement.txt",
+    "type": "retrieval",
+    "question": "How long do confidentiality obligations last after the agreement ends?",
+    "gold": ["five (5) years"],
+    "notes": "direct lexical"
+  },
+  {
+    "id": "saas-08",
+    "fixture": "saas-agreement.txt",
+    "type": "retrieval",
+    "question": "Who owns the software platform itself?",
+    "gold": ["Provider retains all right, title, and interest", "in and to the Service"],
+    "notes": "paraphrase trap — question says 'owns', text says 'retains all right, title, and interest'; no shared keywords"
+  },
+  {
+    "id": "saas-09",
+    "fixture": "saas-agreement.txt",
+    "type": "numeric",
+    "question": "monetary pipeline: total obligations",
+    "gold": { "totalAmountOwed": 4000 },
+    "notes": "the recurring monthly subscription fee should be classified as the dominant obligation"
+  },
+  {
+    "id": "saas-10",
+    "fixture": "saas-agreement.txt",
+    "type": "numeric",
+    "question": "monetary pipeline: grounding rate",
+    "gold": { "groundingRateMin": 0.8 },
+    "notes": "every monetary figure the LLM reports should be verifiable against the source text"
+  },
+  {
+    "id": "construction-01",
+    "fixture": "construction-subcontract.txt",
+    "type": "retrieval",
+    "question": "What does Section 12.3 require of the subcontractor?",
+    "gold": ["Subcontractor shall comply with all applicable federal, state, and local laws", "OSHA"],
+    "notes": "direct lexical section-number reference — tests exact-term (BM25) retrieval"
+  },
+  {
+    "id": "construction-02",
+    "fixture": "construction-subcontract.txt",
+    "type": "retrieval",
+    "question": "What is the total contract price?",
+    "gold": ["seven hundred fifty thousand dollars ($750,000)"],
+    "notes": "direct lexical"
+  },
+  {
+    "id": "construction-03",
+    "fixture": "construction-subcontract.txt",
+    "type": "retrieval",
+    "question": "How much are liquidated damages per day of delay?",
+    "gold": ["two thousand five hundred dollars ($2,500)"],
+    "notes": "direct lexical"
+  },
+  {
+    "id": "construction-04",
+    "fixture": "construction-subcontract.txt",
+    "type": "retrieval",
+    "question": "Can the contractor just walk away from the deal without a reason?",
+    "gold": ["terminate this Subcontract for its own convenience", "ten (10) days"],
+    "notes": "paraphrase trap — question says 'walk away', text says 'terminate...for its own convenience'; no shared keywords"
+  },
+  {
+    "id": "construction-05",
+    "fixture": "construction-subcontract.txt",
+    "type": "retrieval",
+    "question": "Who pays if someone gets hurt on the job site because of the subcontractor's carelessness?",
+    "gold": ["indemnify, defend, and hold harmless", "negligent acts or omissions"],
+    "notes": "paraphrase trap — question says 'hurt'/'carelessness', text says 'indemnify'/'negligent acts'; no shared keywords"
+  },
+  {
+    "id": "construction-06",
+    "fixture": "construction-subcontract.txt",
+    "type": "retrieval",
+    "question": "What percentage of each payment does the contractor hold back?",
+    "gold": ["retainage of ten percent (10%)"],
+    "notes": "direct, moderate paraphrase ('hold back' vs 'retainage')"
+  },
+  {
+    "id": "construction-07",
+    "fixture": "construction-subcontract.txt",
+    "type": "retrieval",
+    "question": "How long is the warranty period after Substantial Completion?",
+    "gold": ["one (1) year following Substantial Completion"],
+    "notes": "direct lexical"
+  },
+  {
+    "id": "construction-08",
+    "fixture": "construction-subcontract.txt",
+    "type": "retrieval",
+    "question": "How many days does the contractor have to pay an approved application for payment?",
+    "gold": ["within thirty (30) days of receipt"],
+    "notes": "direct lexical, tests 'Net 30' style payment term"
+  },
+  {
+    "id": "construction-09",
+    "fixture": "construction-subcontract.txt",
+    "type": "retrieval",
+    "question": "What happens to the schedule if bad weather or a natural disaster delays the project?",
+    "gold": ["Force Majeure", "acts of God, fire, flood"],
+    "notes": "paraphrase trap — question says 'bad weather'/'natural disaster', text says 'Force Majeure'/'acts of God'; no shared keywords"
+  },
+  {
+    "id": "construction-10",
+    "fixture": "construction-subcontract.txt",
+    "type": "numeric",
+    "question": "monetary pipeline: total obligations and risk amounts",
+    "gold": { "totalAmountOwed": 750000, "riskAmountsInclude": [2500] },
+    "notes": "contract price is the dominant obligation; liquidated damages is a clear risk amount"
+  },
+  {
+    "id": "construction-11",
+    "fixture": "construction-subcontract.txt",
+    "type": "numeric",
+    "question": "monetary pipeline: grounding rate",
+    "gold": { "groundingRateMin": 0.8 },
+    "notes": "every monetary figure the LLM reports should be verifiable against the source text"
+  },
+  {
+    "id": "employment-01",
+    "fixture": "employment-nda.txt",
+    "type": "retrieval",
+    "question": "What is the base salary for this position?",
+    "gold": ["one hundred forty thousand dollars ($140,000)"],
+    "notes": "direct lexical"
+  },
+  {
+    "id": "employment-02",
+    "fixture": "employment-nda.txt",
+    "type": "retrieval",
+    "question": "How long does the non-compete restriction last?",
+    "gold": ["twelve (12) months"],
+    "notes": "direct lexical"
+  },
+  {
+    "id": "employment-03",
+    "fixture": "employment-nda.txt",
+    "type": "retrieval",
+    "question": "Can the company fire the employee without giving a specific reason?",
+    "gold": ["with or without cause"],
+    "notes": "paraphrase trap — question says 'fire...without a specific reason', text says 'with or without cause'; no shared keywords"
+  },
+  {
+    "id": "employment-04",
+    "fixture": "employment-nda.txt",
+    "type": "retrieval",
+    "question": "How is the severance payment calculated?",
+    "gold": ["two (2) weeks of base salary for each full year"],
+    "notes": "direct lexical"
+  },
+  {
+    "id": "employment-05",
+    "fixture": "employment-nda.txt",
+    "type": "retrieval",
+    "question": "Is the employee allowed to go work for a direct rival right after leaving?",
+    "gold": ["shall not, directly or indirectly, provide services", "competes with Company's contract-analytics software products"],
+    "notes": "paraphrase trap — question says 'direct rival'/'leaving', text says 'competes with'/'employment relationship'; no shared keywords"
+  },
+  {
+    "id": "employment-06",
+    "fixture": "employment-nda.txt",
+    "type": "retrieval",
+    "question": "Where does arbitration take place?",
+    "gold": ["Cook County, Illinois"],
+    "notes": "direct lexical"
+  },
+  {
+    "id": "employment-07",
+    "fixture": "employment-nda.txt",
+    "type": "retrieval",
+    "question": "How long does confidentiality last after employment ends?",
+    "gold": ["three (3) years"],
+    "notes": "direct lexical"
+  },
+  {
+    "id": "employment-08",
+    "fixture": "employment-nda.txt",
+    "type": "numeric",
+    "question": "monetary pipeline: total obligations",
+    "gold": { "totalAmountOwed": 140000 },
+    "notes": "base salary should be classified as the dominant obligation"
+  },
+  {
+    "id": "employment-09",
+    "fixture": "employment-nda.txt",
+    "type": "numeric",
+    "question": "monetary pipeline: grounding rate",
+    "gold": { "groundingRateMin": 0.8 },
+    "notes": "every monetary figure the LLM reports should be verifiable against the source text"
+  }
+]

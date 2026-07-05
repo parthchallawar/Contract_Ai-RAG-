@@ -1,0 +1,107 @@
+MASTER SUBSCRIPTION AGREEMENT
+
+This Master Subscription Agreement ("Agreement") is entered into by and between Northwind Cloud Systems, Inc., a Delaware corporation ("Provider"), and the customer identified in the applicable Order Form ("Customer"), collectively the "Parties."
+
+Section 1. Definitions
+
+1.1 "Service" means Provider's hosted contract-analytics software-as-a-service platform, including all associated documentation, updates, and support services described herein.
+
+1.2 "Subscription Term" means the initial term and any renewal term during which Customer is entitled to access the Service.
+
+1.3 "Order Form" means the ordering document specifying the Service subscribed to, fees, and Subscription Term, executed by both Parties.
+
+1.4 "Customer Data" means all data, content, and materials that Customer submits to the Service.
+
+Section 2. Subscription Fees and Payment
+
+2.1 Customer shall pay Provider a recurring subscription fee of four thousand dollars ($4,000) per month for access to the Service, payable in advance on the first business day of each calendar month.
+
+2.2 All fees are exclusive of applicable taxes, which shall be Customer's responsibility unless Customer provides a valid tax exemption certificate.
+
+2.3 Late payments shall accrue interest at a rate of one and one-half percent (1.5%) per month, or the maximum rate permitted by applicable law, whichever is lower.
+
+2.4 Provider reserves the right to suspend Customer's access to the Service if payment is more than fifteen (15) days overdue, following written notice.
+
+Section 3. Term and Renewal
+
+3.1 This Agreement shall commence on the Effective Date and continue for an initial term of twelve (12) months (the "Initial Term").
+
+3.2 Following the Initial Term, this Agreement shall automatically renew for successive twelve (12) month periods (each a "Renewal Term") unless either Party provides written notice of non-renewal at least sixty (60) days prior to the end of the then-current term.
+
+3.3 Customer may end this Agreement at its convenience, without cause, by providing Provider thirty (30) days' advance written notice. No refund of prepaid fees shall be issued for early cancellation under this Section 3.3.
+
+3.4 Provider may terminate this Agreement immediately upon written notice if Customer breaches any material term and fails to cure such breach within thirty (30) days of receiving notice thereof.
+
+Section 4. Service Level Agreement
+
+4.1 Provider commits to a Service uptime of ninety-nine and nine-tenths percent (99.9%) measured monthly, excluding scheduled maintenance windows of which Customer will receive at least 48 hours' advance notice.
+
+4.2 If Provider fails to meet the uptime commitment in Section 4.1 during any calendar month, Customer shall be entitled to a service credit equal to five percent (5%) of that month's subscription fee for each full percentage point of downtime below the 99.9% threshold, up to a maximum credit of thirty percent (30%) of the monthly fee.
+
+4.3 Service credits are Customer's sole and exclusive remedy for any failure to meet the uptime commitment described in this Section 4.
+
+Section 5. Limitation of Liability
+
+5.1 EXCEPT FOR BREACHES OF CONFIDENTIALITY OR INDEMNIFICATION OBLIGATIONS, IN NO EVENT SHALL EITHER PARTY'S AGGREGATE LIABILITY ARISING OUT OF OR RELATED TO THIS AGREEMENT EXCEED THE TOTAL FEES PAID OR PAYABLE BY CUSTOMER TO PROVIDER DURING THE TWELVE (12) MONTHS IMMEDIATELY PRECEDING THE EVENT GIVING RISE TO THE CLAIM.
+
+5.2 IN NO EVENT SHALL EITHER PARTY BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING LOSS OF PROFITS, REVENUE, OR DATA, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+5.3 The limitations in this Section 5 apply regardless of the theory of liability, whether in contract, tort, or otherwise, and shall survive any termination of this Agreement.
+
+Section 6. Data Protection and Privacy
+
+6.1 To the extent Provider processes personal data of individuals located in the European Economic Area on Customer's behalf, the Parties shall execute a Data Processing Addendum ("DPA") incorporated by reference into this Agreement, which shall govern such processing in accordance with the General Data Protection Regulation (GDPR).
+
+6.2 Provider shall implement and maintain commercially reasonable administrative, physical, and technical safeguards designed to protect Customer Data against unauthorized access, disclosure, alteration, or destruction.
+
+6.3 Provider shall notify Customer without undue delay, and in any event within seventy-two (72) hours, upon becoming aware of a confirmed data breach affecting Customer Data.
+
+6.4 Customer retains all right, title, and interest in and to Customer Data. Provider shall not use Customer Data for any purpose other than providing the Service, except as required to comply with applicable law.
+
+Section 7. Intellectual Property
+
+7.1 Provider hereby grants Customer a limited, non-exclusive, non-transferable, non-sublicensable license during the Subscription Term to access and use the Service solely for Customer's internal business purposes.
+
+7.2 Customer acknowledges that Provider retains all right, title, and interest in and to the Service, including all underlying software, algorithms, and documentation, and all intellectual property rights therein.
+
+7.3 Nothing in this Agreement shall be construed to grant Customer any ownership interest in the Service or any derivative works thereof.
+
+7.4 Customer grants Provider a limited license to use Customer Data solely as necessary to provide, maintain, and improve the Service.
+
+Section 8. Confidentiality
+
+8.1 Each Party agrees to protect the other Party's Confidential Information using at least the same degree of care it uses to protect its own confidential information, and in no event less than reasonable care.
+
+8.2 Confidential Information shall not include information that is or becomes publicly available through no fault of the receiving Party, was rightfully known prior to disclosure, or is independently developed without use of the disclosing Party's Confidential Information.
+
+8.3 The obligations of confidentiality under this Section 8 shall survive termination of this Agreement for a period of five (5) years.
+
+Section 9. Indemnification
+
+9.1 Provider shall defend, indemnify, and hold harmless Customer from any third-party claim alleging that the Service infringes a valid patent, copyright, or trademark, provided Customer promptly notifies Provider of the claim and cooperates in the defense.
+
+9.2 Customer shall defend, indemnify, and hold harmless Provider from any third-party claim arising from Customer's misuse of the Service or violation of applicable law in connection with Customer Data.
+
+Section 10. General Provisions
+
+10.1 This Agreement shall be governed by and construed in accordance with the laws of the State of Delaware, without regard to its conflict of laws principles.
+
+10.2 Any dispute arising under this Agreement shall be resolved exclusively in the state or federal courts located in Wilmington, Delaware.
+
+10.3 Neither Party may assign this Agreement without the prior written consent of the other Party, except in connection with a merger, acquisition, or sale of substantially all assets.
+
+10.4 This Agreement, together with all Order Forms and the DPA, constitutes the entire agreement between the Parties and supersedes all prior agreements and understandings.
+
+Section 11. Force Majeure
+
+11.1 Neither Party shall be liable for any failure or delay in performance under this Agreement to the extent such failure or delay is caused by circumstances beyond its reasonable control, including acts of God, natural disaster, war, terrorism, labor dispute, governmental action, or widespread internet or utility failure.
+
+11.2 A Party seeking to invoke this Section 11 shall promptly notify the other Party of the event and shall use commercially reasonable efforts to resume performance as soon as practicable.
+
+Section 12. Support and Maintenance
+
+12.1 Provider shall provide Customer with standard technical support via email and ticketing system during business hours, Monday through Friday, excluding Provider-observed holidays.
+
+12.2 Provider may perform scheduled maintenance on the Service, during which the Service may be temporarily unavailable. Provider shall use commercially reasonable efforts to schedule such maintenance during off-peak hours and to provide Customer advance notice as described in Section 4.1.
+
+12.3 Provider may modify or update the Service from time to time, provided that such modifications do not materially reduce the core functionality of the Service during the then-current Subscription Term.
