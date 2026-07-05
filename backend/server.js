@@ -8,6 +8,7 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
+const retrieval = require('./retrieval');
 
 function normalizeNumericSpacing(text) {
   if (!text) return '';
@@ -168,7 +169,8 @@ app.post('/api/contracts/upload', upload.single('file'), (req, res) => {
     extractTextFromFile(contract.filePath).then(async (text) => {
       console.log(`[${new Date().toISOString()}] Text extraction complete for ${contract.name}. Characters: ${text.length}`);
       contract.text = text;
-      
+      await ensureContractIndex(contract, text);
+
       console.log(`[${new Date().toISOString()}] Starting AI analysis for ${contract.name}...`);
       const analysis = await analyzeDocumentText(text, contract);
       
@@ -231,6 +233,7 @@ app.post('/api/contracts/:id/version', upload.single('file'), (req, res) => {
     extractTextFromFile(contract.filePath).then(async (text) => {
       console.log(`[${new Date().toISOString()}] Version update: Text extracted for ${contract.name}.`);
       contract.text = text;
+      await ensureContractIndex(contract, text);
       // Re-run analysis logic over new text
       const analysis = await analyzeDocumentText(text, contract);
       contract.status = 'completed';
@@ -301,6 +304,7 @@ app.patch('/api/contracts/:id/role', (req, res) => {
   extractTextFromFile(contract.filePath).then(async (text) => {
     console.log(`[${new Date().toISOString()}] Re-analysis: Text extracted for ${contract.name}.`);
     contract.text = text;
+    await ensureContractIndex(contract, text);
     const analysis = await analyzeDocumentText(text, contract);
     contract.status = 'completed';
     contract.analysis = analysis;
@@ -883,10 +887,53 @@ function chunkText(text, { targetSize = 1500, overlap = 200 } = {}) {
   return applyOverlap(rawChunks, overlap);
 }
 
-function buildRelevantContext(text, question, maxChunks = 4) {
+// ---------------------------------------------------------------------------
+// Phase 1: per-contract retrieval index (embeddings + BM25, see retrieval.js).
+// Built once per extracted text; the sha256 check makes role switches (which
+// re-extract the same file) reuse the index instead of re-embedding.
+// ---------------------------------------------------------------------------
+
+async function ensureContractIndex(contract, text) {
+  const logPrefix = `[${new Date().toISOString()}] [Index: ${contract.name}]`;
+  try {
+    const textHash = retrieval.sha256(text);
+    if (contract.index && contract.index.textHash === textHash) {
+      console.log(`${logPrefix} Index reused (text unchanged).`);
+      return;
+    }
+    contract.index = await retrieval.buildContractIndex(text, chunkText);
+    if (contract.index) {
+      console.log(`${logPrefix} Index built: ${contract.index.chunks.length} chunks, embeddings: ${contract.index.embeddings ? 'yes' : 'no (BM25-only)'}.`);
+    } else {
+      console.warn(`${logPrefix} Index build failed — retrieval falls back to keyword scoring.`);
+    }
+  } catch (err) {
+    console.warn(`${logPrefix} Index build error — keyword fallback will be used:`, err.message);
+    contract.index = null;
+  }
+}
+
+async function buildRelevantContext(text, question, maxChunks = 4, contract = null) {
   if (!text) return { chunks: [], keywords: [] };
-  const chunks = chunkText(text, { targetSize: 1200, overlap: 150 });
   const keywords = extractChatKeywords(question);
+
+  // Phase 1: hybrid retrieval over the prebuilt contract index. Return shape
+  // stays { chunks: [{id, chunk, score}], keywords } so prompt-building code
+  // downstream is unchanged.
+  if (contract && contract.index) {
+    const queryEmbeddings = await retrieval.embedTexts([question]);
+    const queryEmbedding = (queryEmbeddings && queryEmbeddings[0]) || null;
+    const hits = retrieval.hybridRetrieve(contract.index, question, queryEmbedding, maxChunks);
+    if (hits.length > 0) {
+      return {
+        keywords,
+        chunks: hits.map(h => ({ id: h.id, chunk: h.text, score: h.score }))
+      };
+    }
+  }
+
+  // Phase 0 keyword-scoring fallback (no index, or no relevant hits).
+  const chunks = chunkText(text, { targetSize: 1200, overlap: 150 });
   const fallbackKeywords = [
     'termination', 'liability', 'indemnification', 'warranty', 'payment', 'confidential', 'privacy',
     'data', 'license', 'intellectual property', 'governing law', 'jurisdiction', 'breach', 'renewal',
@@ -905,28 +952,47 @@ function buildRelevantContext(text, question, maxChunks = 4) {
   };
 }
 
+// Role query strings for hybrid retrieval (Phase 1). Written as natural
+// keyword-dense queries: the BM25 leg matches exact terms, the embedding
+// leg catches paraphrases ("cancel with one month notice" ~ "termination").
+const PM_ROLE_QUERY = 'deliverables schedule milestones intellectual property ownership license timeline due dates action items responsibilities';
+const LEGAL_ROLE_QUERY = 'liability cap termination indemnification governing law jurisdiction data protection GDPR compliance warranty breach';
+
+// Hybrid retrieval against the contract's prebuilt index. Returns the top-k
+// hits, or null when the index is missing / retrieval comes back empty —
+// callers then use the Phase 0 keyword-scoring path.
+async function retrieveTopChunks(contract, queryText, k) {
+  if (!contract || !contract.index) return null;
+  const queryEmbeddings = await retrieval.embedTexts([queryText]);
+  const queryEmbedding = (queryEmbeddings && queryEmbeddings[0]) || null;
+  const hits = retrieval.hybridRetrieve(contract.index, queryText, queryEmbedding, k);
+  return hits.length > 0 ? hits : null;
+}
+
 // PM RAG Logic
-async function generatePMInsightsWithRAG(text) {
+async function generatePMInsightsWithRAG(text, contract) {
   try {
     if (!OPENROUTER_API_KEY) {
       console.error("CRITICAL: No OPENROUTER_API_KEY found. PM analysis cannot proceed.");
       return null;
     }
 
-    // RAG Step 1: Clause-aware chunking with overlap (see chunkText)
-    const chunks = chunkText(text, { targetSize: 1500, overlap: 200 });
-
-    // RAG Step 2: Scoring based on PM relevance (word-boundary matching —
-    // 'ip' no longer false-matches inside "equipment"/"recipient"/etc.)
-    const pmKeywords = ['deliverable', 'schedule', 'intellectual property', 'ip', 'timeline', 'action', 'due', 'project', 'responsibility', 'milestone', 'date', 'rights', 'software'];
-    const scoredChunks = chunks.map(c => ({
-      chunk: c.text,
-      score: scoreChunkByKeywords(c.text.toLowerCase(), pmKeywords)
-    }));
-
-    // RAG Step 3: Retrieve Top 4 chunks
-    scoredChunks.sort((a, b) => b.score - a.score);
-    const topContext = scoredChunks.slice(0, 4).map(c => c.chunk).join('\n---\n');
+    // RAG retrieval: hybrid (BM25 + embeddings, RRF-fused) over the contract
+    // index; falls back to Phase 0 keyword scoring if the index is missing.
+    let topContext;
+    const hybridHits = await retrieveTopChunks(contract, PM_ROLE_QUERY, 6);
+    if (hybridHits) {
+      topContext = hybridHits.map(c => c.text).join('\n---\n');
+    } else {
+      const chunks = chunkText(text, { targetSize: 1500, overlap: 200 });
+      const pmKeywords = ['deliverable', 'schedule', 'intellectual property', 'ip', 'timeline', 'action', 'due', 'project', 'responsibility', 'milestone', 'date', 'rights', 'software'];
+      const scoredChunks = chunks.map(c => ({
+        chunk: c.text,
+        score: scoreChunkByKeywords(c.text.toLowerCase(), pmKeywords)
+      }));
+      scoredChunks.sort((a, b) => b.score - a.score);
+      topContext = scoredChunks.slice(0, 4).map(c => c.chunk).join('\n---\n');
+    }
 
     // Generative Step: OpenRouter Call
     const systemPrompt = `You are an expert legal Project Manager AI assistant. 
@@ -963,23 +1029,27 @@ function getFallbackPMInsights() {
 }
 
 // Legal RAG Logic
-async function generateLegalInsightsWithRAG(text) {
+async function generateLegalInsightsWithRAG(text, contract) {
   try {
     if (!OPENROUTER_API_KEY) {
       console.error("CRITICAL: No OPENROUTER_API_KEY found. Legal analysis cannot proceed.");
       return null;
     }
 
-    const chunks = chunkText(text, { targetSize: 1500, overlap: 200 });
-
-    const legalKeywords = ['liability', 'termination', 'indemnification', 'governing law', 'jurisdiction', 'data protection', 'gdpr', 'ccpa', 'compliance', 'warranty', 'breach', 'risk', 'cap', 'statute'];
-    const scoredChunks = chunks.map(c => ({
-      chunk: c.text,
-      score: scoreChunkByKeywords(c.text.toLowerCase(), legalKeywords)
-    }));
-
-    scoredChunks.sort((a, b) => b.score - a.score);
-    const topContext = scoredChunks.slice(0, 4).map(c => c.chunk).join('\n---\n');
+    let topContext;
+    const hybridHits = await retrieveTopChunks(contract, LEGAL_ROLE_QUERY, 6);
+    if (hybridHits) {
+      topContext = hybridHits.map(c => c.text).join('\n---\n');
+    } else {
+      const chunks = chunkText(text, { targetSize: 1500, overlap: 200 });
+      const legalKeywords = ['liability', 'termination', 'indemnification', 'governing law', 'jurisdiction', 'data protection', 'gdpr', 'ccpa', 'compliance', 'warranty', 'breach', 'risk', 'cap', 'statute'];
+      const scoredChunks = chunks.map(c => ({
+        chunk: c.text,
+        score: scoreChunkByKeywords(c.text.toLowerCase(), legalKeywords)
+      }));
+      scoredChunks.sort((a, b) => b.score - a.score);
+      topContext = scoredChunks.slice(0, 4).map(c => c.chunk).join('\n---\n');
+    }
 
     const systemPrompt = `You are an expert legal counsel AI.
 Analyze the provided contract excerpts and extract legal insights into strictly valid JSON format matching this schema:
@@ -1047,15 +1117,24 @@ async function analyzeDocumentText(text, contract) {
   // and is surfaced via analysisWarnings so the other sections still render.
   const analysisWarnings = [];
 
+  // Phase 1: which retrieval mode fed the RAG calls (additive field — the
+  // frontend ignores it; the Phase 4 eval harness will read it).
+  const retrievalMode = contract.index
+    ? (contract.index.embeddings ? 'hybrid' : 'bm25-only')
+    : 'keyword-fallback';
+  if (retrievalMode !== 'hybrid') {
+    analysisWarnings.push(`Retrieval degraded to ${retrievalMode} mode (embedding index unavailable).`);
+  }
+
   console.log(`${logPrefix} Requesting PM insights...`);
-  const pmInsightsRaw = await generatePMInsightsWithRAG(text);
+  const pmInsightsRaw = await generatePMInsightsWithRAG(text, contract);
   const pmInsights = pmInsightsRaw || getFallbackPMInsights();
   if (!pmInsightsRaw) analysisWarnings.push('PM insights unavailable (AI call failed).');
   console.log(`${logPrefix} PM insights ${pmInsightsRaw ? 'received' : 'unavailable — using fallback'}.`);
 
   // Generate dynamic Legal insights via OpenRouter RAG
   console.log(`${logPrefix} Requesting Legal insights...`);
-  const legalInsightsRaw = await generateLegalInsightsWithRAG(text);
+  const legalInsightsRaw = await generateLegalInsightsWithRAG(text, contract);
   const legalInsights = legalInsightsRaw || getFallbackLegalInsights();
   if (!legalInsightsRaw) analysisWarnings.push('Legal insights unavailable (AI call failed).');
   console.log(`${logPrefix} Legal insights ${legalInsightsRaw ? 'received' : 'unavailable — using fallback'}.`);
@@ -1079,6 +1158,10 @@ async function analyzeDocumentText(text, contract) {
     contractName: contract.name,
     generatedAt: new Date().toISOString(),
     analysisWarnings,
+    retrieval: {
+      mode: retrievalMode,
+      chunkCount: contract.index ? contract.index.chunks.length : 0
+    },
     overallRisk,
     lgdScore,
     complianceScore,
@@ -1162,7 +1245,7 @@ async function analyzeDocumentText(text, contract) {
 async function generateChatResponse(message, contract, role) {
   const text = contract.text || 'No text found in contract.';
   const question = String(message || '').trim();
-  const { chunks: contextChunks } = buildRelevantContext(text, question, 4);
+  const { chunks: contextChunks } = await buildRelevantContext(text, question, 4, contract);
 
   if (!OPENROUTER_API_KEY) {
     return {
@@ -1223,4 +1306,7 @@ app.get('*', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Legal Counsel Analysis server running on http://localhost:${PORT}`);
   console.log(`Serving frontend from: ${path.join(__dirname, '../frontend')}`);
+  // Warm the local embedding model so the first upload doesn't pay the
+  // model-load latency. Non-blocking; failure degrades retrieval, never fatal.
+  retrieval.warmupEmbedder();
 });

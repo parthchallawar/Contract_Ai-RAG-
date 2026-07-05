@@ -2,6 +2,9 @@
 node_modules/
 package-lock.json
 
+# Local embedding model cache (~25MB, re-downloaded on demand)
+.models/
+
 # Logs
 logs/
 *.log
