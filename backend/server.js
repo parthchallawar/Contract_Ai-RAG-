@@ -509,14 +509,41 @@ function deriveRiskLevelFromScore(score) {
 
 function extractRiskSignals(text) {
   return {
-    hasTerminationForConvenience: /termination for convenience/i.test(text),
+    // Matches both the noun phrase ("termination for convenience") and the
+    // verb form ("terminate this Agreement for convenience upon 90 days'
+    // notice") — contracts overwhelmingly use the verb form, and the
+    // noun-only literal was missing it entirely.
+    hasTerminationForConvenience: /terminat(?:e|es|ed|ion)[\s\S]{0,80}?for convenience|for convenience[\s\S]{0,40}?terminat/i.test(text),
     hasUncappedLiability: /(uncapped|unlimited)\s+liability|liability\s+(without|no)\s+cap/i.test(text),
-    hasLiabilityCap: /liability cap|limitation of liability|cap on liability/i.test(text),
+    hasLiabilityCap: /liability cap|limitation of liability|cap on liability|aggregate liability[\s\S]{0,80}?(?:not\s+)?exceed|liability[\s\S]{0,40}?shall not exceed/i.test(text),
     hasIndemnification: /indemnif/i.test(text),
     hasDataProtection: /gdpr|ccpa|data protection|data processing|privacy/i.test(text),
-    hasPaymentTerms: /payment terms|net\s?\d+|late fee|interest on late/i.test(text),
+    // Broadened beyond the "payment terms"/"Net 30" literal — a fully
+    // spelled-out fees section ("Client shall pay...", "...due within 30
+    // days of invoice") never says the words "payment terms" but is
+    // unambiguously specifying them.
+    hasPaymentTerms: /payment terms|net\s?\d+|late fee|interest on late|fees and payment|shall pay|payable|invoice|late payment/i.test(text),
     hasIpOwnership: /intellectual property|ip ownership|ownership of ip|license|licensing/i.test(text)
   };
+}
+
+// Real, structural clause count from numbered headings — replaces a prior
+// fabrication that used a sample of long text lines (or a hardcoded 14) and
+// called it a clause count. Prefers subsection-level numbering ("2.4", "3.1")
+// when there's enough of it to be meaningful; falls back to top-level
+// sections/articles; returns null (not a guessed number) when neither
+// numbering style is present.
+function countContractClauses(text) {
+  if (!text) return null;
+  const subsectionMatches = text.match(/^[ \t]*\d{1,2}\.\d{1,2}\s+\S/gm) || [];
+  if (subsectionMatches.length >= 3) {
+    return { total: subsectionMatches.length, level: 'subsection' };
+  }
+  const sectionMatches = text.match(/^[ \t]*(?:\d{1,2}[.)]|section\s+\d+|article\s+[ivxlcdm\d]+)\s+\S/gim) || [];
+  if (sectionMatches.length >= 2) {
+    return { total: sectionMatches.length, level: 'section' };
+  }
+  return null;
 }
 
 function scoreEnforceabilityRisks(risks) {
@@ -529,8 +556,11 @@ function scoreEnforceabilityRisks(risks) {
   return Math.min(30, total);
 }
 
+// Returns null (not 0, not a clamped 100) when there's no verified
+// obligation to divide by — an LGD of "0% risk" or "100% risk" is itself a
+// claim, and neither is true when the denominator is missing/unreliable.
 function computeLossGivenDefaultScore({ totalPotentialLoss, totalAmountOwed }) {
-  if (!totalAmountOwed || totalAmountOwed <= 0) return 0;
+  if (!totalAmountOwed || totalAmountOwed <= 0) return null;
   const percentage = (totalPotentialLoss / totalAmountOwed) * 100;
   return clampScore(percentage);
 }
@@ -690,6 +720,13 @@ const TOC_DOT_LEADER_REGEX = /(\.\s*){4,}$/;
 // ALL-CAPS ("The" breaks the run after its first letter).
 const HEADING_NUMBER_AFTER_REGEX = /^\.\s+[A-Z]{2,}/;
 
+// Numbered subsection labels at the start of a line ("2.4 Upon termination...",
+// "3.1 Client shall pay...") — a dotted section/subsection number, not an
+// amount. Only checked when the match sits at a line start; a genuine amount
+// is never the very first token on its line without preceding prose.
+const SUBSECTION_SHAPE_REGEX = /^\d{1,2}(?:\.\d{1,2})+$/;
+const LINE_START_REGEX = /(^|\n)[ \t]*$/;
+
 // Document/form reference codes ("FMA - 9", "DGS - 30 - 084", "CO - 10.1")
 // chain a bare number after a hyphen. A real amount is never written
 // "- 500" without a currency marker, and $-marked amounts already bypass
@@ -714,6 +751,7 @@ function isNonMonetaryArtifact(raw, matchIndex, normalizedText) {
   if (TOC_DOT_LEADER_REGEX.test(before)) return true;
   if (HEADING_NUMBER_AFTER_REGEX.test(after)) return true;
   if (HYPHEN_CODE_PRECEDING_REGEX.test(before.trimEnd())) return true;
+  if (SUBSECTION_SHAPE_REGEX.test(raw) && LINE_START_REGEX.test(before)) return true;
 
   return false;
 }
@@ -739,16 +777,33 @@ function extractMonetaryCandidates(text, limit = 160) {
     scanned++;
 
     const hasCurrencySymbol = CURRENCY_MARKER_REGEX.test(match[1] || '');
-    const start = Math.max(0, match.index - 70);
-    const end = Math.min(normalizedText.length, match.index + raw.length + 70);
+    const matchEnd = match.index + match[0].length;
+
+    // A percentage ("1.5%") is a rate, never a dollar amount — even with a
+    // money keyword nearby ("interest at 1.5% per month"). Reject whenever
+    // the digits are immediately followed (after optional whitespace) by %.
+    const afterMatchRaw = normalizedText.slice(matchEnd, matchEnd + 5);
+    if (/^\s*%/.test(afterMatchRaw)) continue;
+
+    // The regex's optional leading `\s*` can absorb whitespace (including a
+    // preceding newline) into match[0] before it reaches the digits — e.g. a
+    // match right after "law.\n2.4 Upon..." starts at the newline, not at
+    // "2". Use the true start of the trimmed `raw` text for every
+    // position-sensitive check below, or "before a newline" checks silently
+    // never see the newline (it's inside the match, not before it).
+    const leadingWhitespaceLen = match[0].length - match[0].replace(/^\s+/, '').length;
+    const rawIndex = match.index + leadingWhitespaceLen;
+
+    const start = Math.max(0, rawIndex - 70);
+    const end = Math.min(normalizedText.length, rawIndex + raw.length + 70);
     const context = normalizedText.slice(start, end).replace(/\s+/g, ' ').trim();
 
     if (!hasCurrencySymbol) {
-      if (isNonMonetaryArtifact(raw, match.index, normalizedText)) continue;
+      if (isNonMonetaryArtifact(raw, rawIndex, normalizedText)) continue;
       if (!hasMoneyKeywordNearby(context)) continue;
     }
 
-    candidates.push({ raw, context, index: match.index });
+    candidates.push({ raw, context, index: rawIndex, hasCurrencyMarker: hasCurrencySymbol });
     if (candidates.length >= limit) break;
   }
 
@@ -1034,7 +1089,12 @@ function verifyMonetaryItemCategory(items, candidates) {
     }
     consumed.add(idx);
     const candidate = candidates[idx];
-    grounded.push({ ...item, sourceContext: candidate.context, sourceOffset: candidate.index });
+    grounded.push({
+      ...item,
+      sourceContext: candidate.context,
+      sourceOffset: candidate.index,
+      hasCurrencyMarker: !!candidate.hasCurrencyMarker
+    });
   }
 
   // Soft duplicate flag: equal amounts + >60% shared context tokens. Never
@@ -1054,43 +1114,126 @@ function verifyMonetaryItemCategory(items, candidates) {
   return { grounded, dropped };
 }
 
-// → { risks, obligations, droppedRisks, droppedObligations, grounding }
-// Risks and obligations are verified against `candidates` independently —
-// a candidate consumed by a risk item can still ground an obligation item.
+// → { risks, obligations, rates, insuranceRequirements, droppedRisks,
+//     droppedObligations, droppedRates, droppedInsuranceRequirements, grounding }
+// Each category is verified against `candidates` independently — a candidate
+// consumed by an item in one category can still ground an item in another.
 function verifyMonetaryItems(parsed, candidates) {
   const risksResult = verifyMonetaryItemCategory(Array.isArray(parsed?.risks) ? parsed.risks : [], candidates);
   const obligationsResult = verifyMonetaryItemCategory(Array.isArray(parsed?.obligations) ? parsed.obligations : [], candidates);
+  const ratesResult = verifyMonetaryItemCategory(Array.isArray(parsed?.rates) ? parsed.rates : [], candidates);
+  const insuranceResult = verifyMonetaryItemCategory(Array.isArray(parsed?.insuranceRequirements) ? parsed.insuranceRequirements : [], candidates);
 
-  const total = risksResult.grounded.length + risksResult.dropped.length
-    + obligationsResult.grounded.length + obligationsResult.dropped.length;
-  const grounded = risksResult.grounded.length + obligationsResult.grounded.length;
-  const dropped = risksResult.dropped.length + obligationsResult.dropped.length;
+  const results = [risksResult, obligationsResult, ratesResult, insuranceResult];
+  const total = results.reduce((sum, r) => sum + r.grounded.length + r.dropped.length, 0);
+  const grounded = results.reduce((sum, r) => sum + r.grounded.length, 0);
+  const dropped = results.reduce((sum, r) => sum + r.dropped.length, 0);
 
   return {
     risks: risksResult.grounded,
     obligations: obligationsResult.grounded,
+    rates: ratesResult.grounded,
+    insuranceRequirements: insuranceResult.grounded,
     droppedRisks: risksResult.dropped,
     droppedObligations: obligationsResult.dropped,
+    droppedRates: ratesResult.dropped,
+    droppedInsuranceRequirements: insuranceResult.dropped,
     grounding: { total, grounded, dropped, rate: total === 0 ? 1 : grounded / total }
   };
+}
+
+// Context-based reclassification — the LLM's category choice is never
+// trusted on its own. A candidate whose surrounding text names an insurance
+// coverage minimum or a per-unit rate is moved into that bucket regardless
+// of what the model called it, because neither is money owed or at risk —
+// they're requirements/prices, and including them in exposure/LGD sums
+// silently inflates both (this is exactly how a $2,000,000 insurance
+// minimum and a $275/hour rate ended up inside "total financial exposure").
+const INSURANCE_CONTEXT_REGEX = /insur|coverage of not less|certificate of insurance/i;
+const RATE_CONTEXT_REGEX = /per\s+(hour|day|week|month|annum|year)|\/\s*(hr|hour|day|month)|hourly|per occurrence/i;
+
+function reclassifyMonetaryItems({ risks = [], obligations = [], rates = [], insuranceRequirements = [] }) {
+  const outRisks = [];
+  const outObligations = [];
+  const outRates = [...rates];
+  const outInsurance = [...insuranceRequirements];
+
+  const sort = (item, defaultBucket) => {
+    const context = item.sourceContext || '';
+    if (INSURANCE_CONTEXT_REGEX.test(context)) {
+      outInsurance.push(item);
+    } else if (RATE_CONTEXT_REGEX.test(context)) {
+      outRates.push(item);
+    } else {
+      defaultBucket.push(item);
+    }
+  };
+
+  for (const item of risks) sort(item, outRisks);
+  for (const item of obligations) sort(item, outObligations);
+
+  // The LLM sometimes classifies the same source occurrence into two
+  // categories at once (e.g. an insurance minimum as both a "risk" and an
+  // "insuranceRequirement") — both verify individually since risks/
+  // obligations/rates/insurance are each grounded independently, but showing
+  // the identical source offset twice in one bucket is a display duplicate,
+  // not two distinct facts. Collapse by sourceOffset within each bucket.
+  const dedupeBySourceOffset = (items) => {
+    const seen = new Set();
+    return items.filter((item) => {
+      if (item.sourceOffset === undefined || item.sourceOffset === null) return true;
+      if (seen.has(item.sourceOffset)) return false;
+      seen.add(item.sourceOffset);
+      return true;
+    });
+  };
+
+  return {
+    risks: dedupeBySourceOffset(outRisks),
+    obligations: dedupeBySourceOffset(outObligations),
+    rates: dedupeBySourceOffset(outRates),
+    insuranceRequirements: dedupeBySourceOffset(outInsurance)
+  };
+}
+
+// A grounded item counts toward exposure/obligation SUMS only if it's
+// unambiguously a dollar amount: either the source text carried an explicit
+// currency marker, or (for bare numbers admitted via a money-keyword match)
+// it's large enough and sits next to a strict money noun. This is what keeps
+// a bare duration like "twelve (12) months" — which passes the broader
+// candidate-extraction keyword gate — out of a financial total, while still
+// summing a keyword-gated bare figure like "late fee of 1,500".
+const STRICT_MONEY_NOUN_REGEX = /\b(fee|fees|payment|price|penalt|damages|deposit|invoice|compensation|salary|fine)\b/i;
+
+function isSumEligible(item) {
+  if (item?.hasCurrencyMarker) return true;
+  const amount = Number(item?.amount);
+  if (!Number.isFinite(amount) || amount < 100) return false;
+  return STRICT_MONEY_NOUN_REGEX.test(item?.sourceContext || '');
 }
 
 async function selectMonetaryExposureWithLLM(candidates) {
   if (LLM_PROVIDERS.length === 0) return null;
   if (!Array.isArray(candidates) || candidates.length === 0) return null;
 
-  const systemPrompt = `You are a contract analyst specialized in financial risk. 
+  const systemPrompt = `You are a contract analyst specialized in financial risk.
 From the provided list of numeric candidates with context, identify EVERY individual monetary amount mentioned.
 
 Categorize them into:
-1. "risks": Liability caps, penalties, indemnification limits, or potential damages.
-2. "obligations": Contract price, principal fees, recurring payments, or total consideration.
+1. "risks": Liquidated damages, penalties, fixed liability caps, indemnification limits, or other potential losses.
+2. "obligations": Contract price, principal fees, installments, deposits, reimbursable-expense caps, or other amounts owed.
+3. "rates": Per-hour/per-day/per-week/per-month unit prices (e.g. "$275 per hour").
+4. "insuranceRequirements": Insurance coverage minimums a party must maintain (e.g. "$2,000,000 per occurrence").
 
+Only include figures that are present in the provided candidates. Never invent, estimate, or guess a figure.
+If a category has no genuine entries, return an empty array for it.
 Exclude dates, IDs, and non-monetary figures.
 Return strictly valid JSON:
 {
   "risks": [ { "raw": "...", "amount": <number>, "reason": "...", "riskLevel": "Low|Medium|High" } ],
   "obligations": [ { "raw": "...", "amount": <number>, "reason": "..." } ],
+  "rates": [ { "raw": "...", "amount": <number>, "reason": "..." } ],
+  "insuranceRequirements": [ { "raw": "...", "amount": <number>, "reason": "..." } ],
   "riskExplanation": "...",
   "comments": "If no relevant risks or obligations are found, explicitly state why here."
 }
@@ -1109,19 +1252,48 @@ Only output the raw JSON object.`;
   const verified = verifyMonetaryItems(parsed, candidates);
 
   if (verified.grounding.dropped > 0) {
-    const droppedDetail = [...verified.droppedRisks, ...verified.droppedObligations]
-      .map((d) => `${d.raw} (${d.reason})`).join(', ');
+    const droppedDetail = [
+      ...verified.droppedRisks, ...verified.droppedObligations,
+      ...verified.droppedRates, ...verified.droppedInsuranceRequirements
+    ].map((d) => `${d.raw} (${d.reason})`).join(', ');
     console.warn(`[monetary] Dropped ${verified.grounding.dropped} ungrounded item(s): ${droppedDetail}`);
   }
 
-  const totalPotentialLoss = verified.risks.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
-  const totalAmountOwed = verified.obligations.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+  // Server-side truth: context decides the category, not the LLM's label.
+  const reclassified = reclassifyMonetaryItems(verified);
+
+  const eligibleRisks = reclassified.risks.filter(isSumEligible);
+  const eligibleObligations = reclassified.obligations.filter(isSumEligible);
+  const excludedFromSums = (reclassified.risks.length - eligibleRisks.length)
+    + (reclassified.obligations.length - eligibleObligations.length);
+
+  const totalPotentialLoss = eligibleRisks.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+
+  // The obligation total is the LARGEST single verified obligation, not a
+  // sum — a contract's total price and its component installments are all
+  // separately-extracted candidates, so blindly summing them double-counts
+  // (e.g. "$480,000 total" + "$80,000/quarter installment" would otherwise
+  // add up to $560,000 of obligation that doesn't exist). The largest
+  // verified figure is a defensible proxy for total contract value.
+  let totalAmountOwed = null;
+  let lgdBasis = null;
+  for (const o of eligibleObligations) {
+    const amount = Number(o.amount) || 0;
+    if (totalAmountOwed === null || amount > totalAmountOwed) {
+      totalAmountOwed = amount;
+      lgdBasis = { raw: o.raw, sourceOffset: o.sourceOffset };
+    }
+  }
 
   return {
     totalPotentialLoss,
     totalAmountOwed,
-    risks: verified.risks,
-    obligations: verified.obligations,
+    lgdBasis,
+    risks: reclassified.risks,
+    obligations: reclassified.obligations,
+    rates: reclassified.rates,
+    insuranceRequirements: reclassified.insuranceRequirements,
+    excludedFromSums,
     grounding: verified.grounding,
     riskExplanation: parsed?.riskExplanation || '',
     comments: parsed?.comments || ''
@@ -1455,15 +1627,20 @@ async function generatePMInsightsWithRAG(text, contract) {
     }
 
     // Generative Step: OpenRouter Call
-    const systemPrompt = `You are an expert legal Project Manager AI assistant. 
+    const systemPrompt = `You are an expert legal Project Manager AI assistant.
 Analyze the provided contract excerpts and extract PM insights into strictly valid JSON format matching this schema:
 {
-  "deliverables": [ { "name": "...", "status": "PENDING|IN PROGRESS|COMPLETED", "due": "...", "progress": 0 } ],
-  "ipRights": { "customerData": "...", "saasSoftware": "...", "usageRestrictions": "..." },
-  "timelines": [ { "event": "...", "date": "..." } ],
-  "actionItems": [ { "task": "...", "assigned": "..." } ]
+  "deliverables": [ { "name": "...", "due": "...", "quote": "exact verbatim substring from the excerpts" } ],
+  "ipRights": {
+    "customerData": "...", "saasSoftware": "...", "usageRestrictions": "...",
+    "quotes": { "customerData": "...", "saasSoftware": "...", "usageRestrictions": "..." }
+  },
+  "timelines": [ { "event": "...", "date": "...", "quote": "..." } ],
+  "actionItems": [ { "task": "...", "assigned": "...", "quote": "..." } ]
 }
-If no information is found for a field, make an educated guess or leave strings as "Not specified". Only output the raw JSON object. Do NOT use markdown code blocks (\`\`\`).`;
+Every array item MUST include "quote": an EXACT, verbatim substring copied from the excerpts that supports it. Items whose quote is not verbatim will be discarded.
+A contract does not record execution status or progress — do NOT include a "status" or "progress" field.
+If the contract does not contain information for a field, use the string "Not specified" (for string fields) or omit the item entirely (for array entries). NEVER guess, estimate, or invent information. Only output the raw JSON object. Do NOT use markdown code blocks (\`\`\`).`;
 
     return await callOpenRouter([
       { role: "system", content: systemPrompt },
@@ -1520,8 +1697,8 @@ Analyze the provided contract excerpts and extract legal insights into strictly 
   "complianceChecks": [ { "name": "...", "status": "pass|warning|fail", "note": "...", "quote": "..." } ],
   "jurisdiction": { "location": "...", "governingLaw": "...", "notes": ["..."] }
 }
-For "quote", you MUST extract an EXACT, verbatim, short substring from the text that proves your analysis. If you make it up, you fail.
-If no information is found for a field, make an educated guess. Only output the raw JSON object. Do NOT use markdown code blocks (\`\`\`).`;
+For "quote", you MUST extract an EXACT, verbatim, short substring from the text that proves your analysis. Items whose quote is not found verbatim in the contract will be discarded.
+If the contract does not contain information for a field, use "Not specified" (for string fields) or omit the item entirely (for array entries). NEVER guess or invent information. Only output the raw JSON object. Do NOT use markdown code blocks (\`\`\`).`;
 
     return await callOpenRouter([
       { role: "system", content: systemPrompt },
@@ -1561,16 +1738,14 @@ async function analyzeDocumentText(text, contract) {
   const llmExposure = await selectMonetaryExposureWithLLM(monetaryCandidates);
 
   const totalExposureValue = llmExposure?.totalPotentialLoss || 0;
-  const financialExposure = totalExposureValue > 0 ? formatNumber(totalExposureValue) : 'Not specified';
+  const financialExposure = totalExposureValue > 0 ? formatNumber(totalExposureValue) : 'Not mentioned in the contract';
   const exposureSource = llmExposure ? 'llm-monetary-sum' : 'none';
   console.log(`${logPrefix} Monetary analysis complete. Exposure: ${financialExposure}`);
 
   const riskSignals = extractRiskSignals(text);
   const terminationMatch = riskSignals.hasTerminationForConvenience ? 'High' : 'Low';
-  const liabilityMatch = riskSignals.hasLiabilityCap ? 'High' : 'Medium';
-  const gdprMatch = riskSignals.hasDataProtection ? 'pass' : 'warning';
 
-  const snippets = text.split('\n').filter(l => l.length > 20).slice(0, 10);
+  const clauseCount = countContractClauses(text);
 
   // Generate dynamic PM insights via OpenRouter RAG. A failed/malformed AI
   // call no longer fails the whole analysis — it degrades to safe defaults
@@ -1595,30 +1770,48 @@ async function analyzeDocumentText(text, contract) {
 
   console.log(`${logPrefix} Requesting PM insights...`);
   const pmInsightsRaw = await generatePMInsightsWithRAG(text, contract);
-  const pmInsights = pmInsightsRaw || getFallbackPMInsights();
-  if (!pmInsightsRaw) analysisWarnings.push('PM insights unavailable (AI call failed).');
+  let pmInsights;
+  if (pmInsightsRaw) {
+    const pmVerified = verifyPMInsights(pmInsightsRaw, text);
+    pmInsights = pmVerified.insights;
+    if (pmVerified.droppedCount > 0) {
+      analysisWarnings.push(`${pmVerified.droppedCount} PM item(s) removed (quote not found in contract).`);
+    }
+  } else {
+    pmInsights = getFallbackPMInsights();
+    analysisWarnings.push('PM insights unavailable (AI call failed).');
+  }
   console.log(`${logPrefix} PM insights ${pmInsightsRaw ? 'received' : 'unavailable — using fallback'}.`);
 
   // Generate dynamic Legal insights via OpenRouter RAG
   console.log(`${logPrefix} Requesting Legal insights...`);
   const legalInsightsRaw = await generateLegalInsightsWithRAG(text, contract);
-  const legalInsights = legalInsightsRaw || getFallbackLegalInsights();
-  if (!legalInsightsRaw) analysisWarnings.push('Legal insights unavailable (AI call failed).');
+  let legalInsights;
+  if (legalInsightsRaw) {
+    const legalVerified = verifyLegalInsights(legalInsightsRaw, text);
+    legalInsights = legalVerified.insights;
+    if (legalVerified.droppedCount > 0) {
+      analysisWarnings.push(`${legalVerified.droppedCount} Legal item(s) removed (quote not found in contract).`);
+    }
+  } else {
+    legalInsights = getFallbackLegalInsights();
+    analysisWarnings.push('Legal insights unavailable (AI call failed).');
+  }
   console.log(`${logPrefix} Legal insights ${legalInsightsRaw ? 'received' : 'unavailable — using fallback'}.`);
 
   console.log(`${logPrefix} Finalizing scoring and report assembly...`);
   const parsedComplianceScore = Number(legalInsights.complianceScore);
-  const complianceScore = Number.isFinite(parsedComplianceScore)
-    ? parsedComplianceScore
-    : (gdprMatch === 'pass' ? 84 : 64);
+  // No fabricated fallback score — when the Legal LLM didn't provide one,
+  // the honest answer is "not determined", not a guessed 84/64.
+  const complianceScore = Number.isFinite(parsedComplianceScore) ? parsedComplianceScore : null;
   const normalizedOverallRisk = normalizeRiskLevel(legalInsights.overallRisk);
-  
+
   const lgdScore = computeLossGivenDefaultScore({
     totalPotentialLoss: llmExposure?.totalPotentialLoss || 0,
     totalAmountOwed: llmExposure?.totalAmountOwed || 0
   });
 
-  const overallRisk = normalizedOverallRisk || deriveRiskLevelFromScore(lgdScore);
+  const overallRisk = normalizedOverallRisk || (lgdScore === null ? null : deriveRiskLevelFromScore(lgdScore));
 
   const baseAnalysis = {
     contractId: contract.id,
@@ -1631,19 +1824,22 @@ async function analyzeDocumentText(text, contract) {
     },
     calculations: {
       exposure: {
-        formula: 'sum(grounded risk amounts)',
+        formula: 'sum(verified currency amounts categorized as risks; rates and insurance minimums excluded)',
         items: (llmExposure?.risks || []).map((r) => ({
           raw: r.raw,
           amount: r.amount,
           sourceOffset: r.sourceOffset,
-          possibleDuplicate: !!r.possibleDuplicate
+          possibleDuplicate: !!r.possibleDuplicate,
+          hasCurrencyMarker: !!r.hasCurrencyMarker
         })),
-        total: totalExposureValue
+        total: totalExposureValue,
+        excludedFromSums: llmExposure?.excludedFromSums || 0
       },
       lgd: {
-        formula: 'totalPotentialLoss / totalAmountOwed × 100, clamped 0–100',
+        formula: 'totalPotentialLoss ÷ largest verified obligation (contract-value proxy) × 100',
         totalPotentialLoss: llmExposure?.totalPotentialLoss || 0,
-        totalAmountOwed: llmExposure?.totalAmountOwed || 0,
+        totalAmountOwed: llmExposure?.totalAmountOwed ?? null,
+        basis: llmExposure?.lgdBasis || null,
         rawPct: (llmExposure?.totalAmountOwed)
           ? (llmExposure.totalPotentialLoss / llmExposure.totalAmountOwed) * 100
           : null,
@@ -1655,18 +1851,18 @@ async function analyzeDocumentText(text, contract) {
     lgdScore,
     complianceScore,
     financialExposure,
-    riskExplanation: llmExposure?.riskExplanation || 'Analysis based on contract context and detected risks.',
+    riskExplanation: llmExposure?.riskExplanation || '',
     llmComments: llmExposure?.comments || '',
-    ltvImpact: '-4.2%',
-    investorCompliance: '88%',
     numericFigures: {
       ...numericFigures,
       totalExposureValue,
       totalPotentialLoss: llmExposure?.totalPotentialLoss || 0,
-      totalAmountOwed: llmExposure?.totalAmountOwed || 0,
+      totalAmountOwed: llmExposure?.totalAmountOwed ?? null,
       exposureSource,
       risks: llmExposure?.risks || [],
-      obligations: llmExposure?.obligations || []
+      obligations: llmExposure?.obligations || [],
+      rates: llmExposure?.rates || [],
+      insuranceRequirements: llmExposure?.insuranceRequirements || []
     },
     riskFactors: [
       {
@@ -1674,50 +1870,48 @@ async function analyzeDocumentText(text, contract) {
         section: 'Termination',
         title: 'Termination for Convenience',
         risk: terminationMatch,
+        source: 'keyword-scan',
         description: terminationMatch === 'High'
-          ? 'Found explicit mention of termination for convenience in the contract.'
-          : 'No explicit termination for convenience language surfaced in the text.',
-        financialImpact: 'Varies'
+          ? 'Termination-for-convenience wording was detected by keyword scan.'
+          : 'No termination-for-convenience wording detected by keyword scan — verify manually.'
       },
       {
         id: 2,
         section: 'Liability',
         title: riskSignals.hasUncappedLiability ? 'Uncapped Liability Exposure' : 'Liability Cap Clarity',
         risk: riskSignals.hasUncappedLiability ? 'High' : (riskSignals.hasLiabilityCap ? 'Low' : 'Medium'),
+        source: 'keyword-scan',
         description: riskSignals.hasUncappedLiability
-          ? 'Language suggests liability may be uncapped or unlimited.'
+          ? 'Language suggests liability may be uncapped or unlimited (keyword scan).'
           : (riskSignals.hasLiabilityCap
-            ? 'Liability cap language appears in the contract.'
-            : 'No clear liability cap language found; exposure may be ambiguous.'),
-        financialImpact: financialExposure
+            ? 'Liability cap language was detected by keyword scan.'
+            : 'No liability cap language detected by keyword scan; exposure may be ambiguous.'),
+        ...(totalExposureValue > 0 ? { financialImpact: financialExposure } : {})
       },
       {
         id: 3,
         section: 'Data Protection',
         title: 'Data Protection Commitments',
         risk: riskSignals.hasDataProtection ? 'Low' : 'Medium',
+        source: 'keyword-scan',
         description: riskSignals.hasDataProtection
-          ? 'Data protection or privacy obligations appear in the contract.'
-          : 'Data protection language is not clearly stated; verify compliance obligations.',
-        financialImpact: 'Regulatory exposure'
+          ? 'Data protection or privacy obligations were detected by keyword scan.'
+          : 'No data protection language detected by keyword scan; verify compliance obligations manually.'
       },
       {
         id: 4,
         section: 'Commercial Terms',
         title: 'Payment Terms Specificity',
         risk: riskSignals.hasPaymentTerms ? 'Low' : 'Medium',
+        source: 'keyword-scan',
         description: riskSignals.hasPaymentTerms
-          ? 'Payment terms are referenced in the contract.'
-          : 'Payment terms are not clearly specified; confirm invoicing and timing.',
-        financialImpact: 'Cash flow risk'
+          ? 'Payment terms were detected by keyword scan.'
+          : 'No payment terms detected by keyword scan; confirm invoicing and timing manually.'
       }
     ],
-    marketBenchmark: {
-      matchPercentage: 62,
-      note: 'Analysis generated dynamically by parsing ' + text.length + ' chars of text.'
-    },
-    clauses: 12,
-    totalClauses: snippets.length > 5 ? snippets.length : 14,
+    clauses: clauseCount?.total ?? null,
+    totalClauses: clauseCount?.total ?? null,
+    clauseCountLevel: clauseCount?.level || null,
     enforceabilityRisks: legalInsights.enforceabilityRisks || getFallbackLegalInsights().enforceabilityRisks,
     complianceChecks: legalInsights.complianceChecks || getFallbackLegalInsights().complianceChecks,
     jurisdiction: legalInsights.jurisdiction || getFallbackLegalInsights().jurisdiction,
@@ -1928,6 +2122,109 @@ function verifyQuote(quote, text) {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Phase 5: Legal/PM RAG output verification — the free-tier LLM is told to
+// cite a verbatim quote for every claim, but nothing previously checked that
+// it actually did. These functions never trust the model's own "quote":
+// every claim is checked against the source text with the same verifyQuote
+// used for chat citations, and unverifiable content is dropped/downgraded
+// rather than shown as if it were real.
+// ---------------------------------------------------------------------------
+
+const NOT_SPECIFIED = 'Not specified';
+const NOT_MENTIONED = 'Not mentioned in the contract';
+
+// A string field (jurisdiction.location, ipRights.customerData, etc.) is
+// "verified" if it's the honest sentinel, or if it (or its paired quote)
+// appears verbatim in the source text. Anything else becomes NOT_MENTIONED
+// rather than being shown as fact.
+function verifyStringField(value, text, quote) {
+  if (!value || value === NOT_SPECIFIED) return NOT_SPECIFIED;
+  if (verifyQuote(quote, text)) return value;
+  if (verifyQuote(value, text)) return value;
+  return NOT_MENTIONED;
+}
+
+// enforceabilityRisks make specific factual claims about the contract, so an
+// item whose quote can't be verified is dropped outright (the safe failure
+// mode is silence, not a fabricated-looking risk card). complianceChecks are
+// a checklist widget — dropping items would silently shrink the checklist
+// with no signal, so an unverifiable one is instead kept but downgraded to
+// status "unverified" so the UI can flag it rather than show a fabricated
+// pass/fail as if it were real.
+function verifyLegalInsights(rawInsights, text) {
+  const insights = rawInsights || {};
+  let droppedCount = 0;
+
+  const enforceabilityRisks = (Array.isArray(insights.enforceabilityRisks) ? insights.enforceabilityRisks : [])
+    .map((risk) => {
+      const verified = verifyQuote(risk?.quote, text);
+      return verified ? { ...risk, quoteOffset: verified.offset } : null;
+    })
+    .filter((risk) => {
+      if (risk) return true;
+      droppedCount++;
+      return false;
+    });
+
+  const complianceChecks = (Array.isArray(insights.complianceChecks) ? insights.complianceChecks : [])
+    .map((check) => {
+      const verified = verifyQuote(check?.quote, text);
+      return verified
+        ? { ...check, quoteOffset: verified.offset }
+        : { ...check, status: 'unverified', note: `${check?.note || ''} (quote could not be verified against the contract text)`.trim() };
+    });
+
+  const rawJurisdiction = insights.jurisdiction || {};
+  const jurisdiction = {
+    location: verifyStringField(rawJurisdiction.location, text),
+    governingLaw: verifyStringField(rawJurisdiction.governingLaw, text),
+    notes: Array.isArray(rawJurisdiction.notes) ? rawJurisdiction.notes : []
+  };
+
+  return {
+    insights: { ...insights, enforceabilityRisks, complianceChecks, jurisdiction },
+    droppedCount
+  };
+}
+
+// deliverables/timelines/actionItems make specific factual claims, so items
+// with an unverifiable quote are dropped. ipRights strings are checked
+// against their paired quote (or, failing that, the string itself) and fall
+// back to NOT_MENTIONED rather than displaying an invented right.
+function verifyPMInsights(rawInsights, text) {
+  const insights = rawInsights || {};
+  let droppedCount = 0;
+
+  const verifyArray = (items) => (Array.isArray(items) ? items : [])
+    .map((item) => {
+      const verified = verifyQuote(item?.quote, text);
+      return verified ? { ...item, quoteOffset: verified.offset } : null;
+    })
+    .filter((item) => {
+      if (item) return true;
+      droppedCount++;
+      return false;
+    });
+
+  const deliverables = verifyArray(insights.deliverables);
+  const timelines = verifyArray(insights.timelines);
+  const actionItems = verifyArray(insights.actionItems);
+
+  const rawIpRights = insights.ipRights || {};
+  const rawQuotes = rawIpRights.quotes || {};
+  const ipRights = {
+    customerData: verifyStringField(rawIpRights.customerData, text, rawQuotes.customerData),
+    saasSoftware: verifyStringField(rawIpRights.saasSoftware, text, rawQuotes.saasSoftware),
+    usageRestrictions: verifyStringField(rawIpRights.usageRestrictions, text, rawQuotes.usageRestrictions)
+  };
+
+  return {
+    insights: { ...insights, deliverables, timelines, actionItems, ipRights },
+    droppedCount
+  };
+}
+
 function finalizeChatAnswer(rawText, text, role, contract) {
   const parsed = parseChatAnswer(rawText);
   const citations = [];
@@ -2100,5 +2397,12 @@ module.exports = {
   chunkText,
   scoreChunkByKeywords,
   extractChatKeywords,
-  selectMonetaryExposureWithLLM
+  selectMonetaryExposureWithLLM,
+  // Phase 5: honest-data verification/reclassification, unit-testable in isolation
+  reclassifyMonetaryItems,
+  isSumEligible,
+  countContractClauses,
+  verifyLegalInsights,
+  verifyPMInsights,
+  extractRiskSignals
 };

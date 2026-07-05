@@ -103,12 +103,52 @@ function renderLgdBreakdownText(analysisObj) {
     const lgd = analysisObj?.calculations?.lgd;
     if (!lgd) return '';
     if (!lgd.totalAmountOwed) {
-        return 'LGD undefined (no obligations found) — shown as 0%';
+        return 'Not computable — no verified payment obligation found in the contract';
     }
     const lossStr = '$' + new Intl.NumberFormat().format(lgd.totalPotentialLoss);
     const owedStr = '$' + new Intl.NumberFormat().format(lgd.totalAmountOwed);
     const pctStr = Number.isFinite(lgd.rawPct) ? `${lgd.rawPct.toFixed(1)}%` : `${lgd.result}%`;
     return `${lossStr} ÷ ${owedStr} = ${pctStr}`;
+}
+
+// Phase 5: honest-display helpers — every value shown across the four views
+// must be either a real computed/verified number or one of these explicit
+// "we don't know" states, never a raw `undefined`/`NaN` or a silent fabricated
+// default. All accept null/undefined/empty freely (old persisted analyses and
+// LLM-omitted fields both hit this path constantly).
+const EMPTY_FIELD_TEXT = 'Not mentioned in the contract';
+
+function displayField(value, fallback = EMPTY_FIELD_TEXT) {
+    if (value === null || value === undefined || value === '') return escapeHtml(fallback);
+    if (typeof value === 'number' && !Number.isFinite(value)) return escapeHtml(fallback);
+    return escapeHtml(String(value));
+}
+
+function displayMoney(amount) {
+    if (!Number.isFinite(amount)) return 'Not computable';
+    return '$' + new Intl.NumberFormat().format(amount);
+}
+
+function riskLevelClasses(level) {
+    const normalized = String(level || '').toLowerCase();
+    if (normalized === 'high') return 'text-red-600 dark:text-red-400';
+    if (normalized === 'medium') return 'text-amber-600 dark:text-amber-400';
+    if (normalized === 'low') return 'text-emerald-600 dark:text-emerald-400';
+    return 'text-slate-500 dark:text-slate-400';
+}
+
+// → { text, cls } for a complianceScore that may be a real 0-100 number or
+// null/undefined ("not determined" — the honest state when the Legal LLM
+// didn't return one; there is no more 84/64 guessed fallback on the backend).
+function complianceDisplay(analysis) {
+    const score = Number(analysis?.complianceScore);
+    if (!Number.isFinite(score)) {
+        return { text: 'Not determined', cls: 'text-slate-500 dark:text-slate-400' };
+    }
+    const cls = score >= 70
+        ? 'text-emerald-600 dark:text-emerald-400'
+        : (score >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400');
+    return { text: `${score}%`, cls };
 }
 
 async function loadExtractedText() {
@@ -622,11 +662,8 @@ function renderInvestorView() {
     // Use analysis data directly
     const investorAnalysis = analysis;
     const flaggedClauses = Array.isArray(investorAnalysis.enforceabilityRisks) ? investorAnalysis.enforceabilityRisks.length : 0;
-    const totalClauses = investorAnalysis.totalClauses || investorAnalysis.clauses || 0;
-    const lgdScore = Number(investorAnalysis.lgdScore) || 0;
-    const complianceScore = typeof investorAnalysis.complianceScore === 'number'
-        ? `${investorAnalysis.complianceScore}%`
-        : (investorAnalysis.investorCompliance || 'N/A');
+    const totalClauses = Number.isFinite(investorAnalysis.totalClauses) ? investorAnalysis.totalClauses : null;
+    const lgdScore = Number.isFinite(investorAnalysis.lgdScore) ? investorAnalysis.lgdScore : null;
     const clauseItems = Array.isArray(investorAnalysis.enforceabilityRisks) && investorAnalysis.enforceabilityRisks.length > 0
         ? investorAnalysis.enforceabilityRisks
         : (Array.isArray(investorAnalysis.riskFactors) ? investorAnalysis.riskFactors : []);
@@ -654,27 +691,30 @@ function renderInvestorView() {
                 <div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-900 border border-[#cfdbe7] dark:border-slate-800 shadow-sm border-l-4 border-l-red-500">
                     <p class="text-[#4c739a] text-xs font-semibold uppercase tracking-wider">Total Financial Exposure</p>
                     <div class="flex items-baseline gap-2">
-                        <p class="text-[#0d141b] dark:text-white text-3xl font-bold">${investorAnalysis.financialExposure}</p>
+                        <p class="text-[#0d141b] dark:text-white text-3xl font-bold">${displayField(investorAnalysis.financialExposure)}</p>
                     </div>
-                    <p class="text-[#4c739a] text-xs">${investorAnalysis.riskExplanation || 'Relevant monetary sum (LLM-selected)'}</p>
+                    <p class="text-[#4c739a] text-xs">${(investorAnalysis.calculations?.exposure?.items?.length || 0) > 0 ? `Sum of ${investorAnalysis.calculations.exposure.items.length} amount(s) verified in contract text` : 'No verified risk amounts found in contract text'}</p>
+                    ${investorAnalysis.riskExplanation ? `<p class="text-[10px] text-slate-400 italic">AI commentary (unverified): ${escapeHtml(investorAnalysis.riskExplanation)}</p>` : ''}
                 </div>
                 <div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-900 border border-[#cfdbe7] dark:border-slate-800 shadow-sm">
                     <p class="text-[#4c739a] text-xs font-semibold uppercase tracking-wider">Loss Given Default (LGD)</p>
                     <div class="flex items-baseline gap-2">
-                        <p class="text-[#0d141b] dark:text-white text-3xl font-bold">${lgdScore}%</p>
+                        <p class="text-[#0d141b] dark:text-white text-3xl font-bold">${lgdScore !== null ? `${lgdScore}%` : 'Not computable'}</p>
                     </div>
-                    <div class="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full mt-1">
-                        <div class="bg-primary h-full rounded-full" style="width: ${lgdScore}%"></div>
-                    </div>
+                    ${lgdScore !== null ? `
+                        <div class="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full mt-1">
+                            <div class="bg-primary h-full rounded-full" style="width: ${lgdScore}%"></div>
+                        </div>
+                    ` : ''}
                     ${renderLgdBreakdownText(investorAnalysis) ? `<p class="text-[10px] text-[#4c739a] mt-1">${renderLgdBreakdownText(investorAnalysis)}</p>` : ''}
-                    ${investorAnalysis.llmComments ? `<p class="text-[10px] text-amber-600 dark:text-amber-400 mt-2 font-medium italic">${investorAnalysis.llmComments}</p>` : ''}
+                    ${investorAnalysis.llmComments ? `<p class="text-[10px] text-amber-600 dark:text-amber-400 mt-2 font-medium italic">${escapeHtml(investorAnalysis.llmComments)}</p>` : ''}
                 </div>
                 <div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-900 border border-[#cfdbe7] dark:border-slate-800 shadow-sm">
                     <p class="text-[#4c739a] text-xs font-semibold uppercase tracking-wider">Ambiguous Clauses</p>
                     <div class="flex items-baseline gap-2">
                         <p class="text-[#0d141b] dark:text-white text-3xl font-bold">${flaggedClauses}</p>
                     </div>
-                    <p class="text-[#4c739a] text-xs">Flagged out of ${totalClauses || 'N/A'} clauses</p>
+                    <p class="text-[#4c739a] text-xs">${totalClauses !== null ? `Flagged out of ${totalClauses} ${investorAnalysis.clauseCountLevel === 'section' ? 'sections' : 'clauses'}` : 'Clause count not determined'}</p>
                 </div>
             </div>
 
@@ -703,9 +743,9 @@ function renderInvestorView() {
                         </div>
                         ${state.investorTab === 'insights' ? `
                             <div class="p-4 flex gap-2 overflow-x-auto no-scrollbar">
-                                ${clauseItems.map(item => `
-                                    <span class="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-full whitespace-nowrap">${item.title}</span>
-                                `).join('')}
+                                ${clauseItems.length > 0 ? clauseItems.map(item => `
+                                    <span class="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-full whitespace-nowrap">${escapeHtml(item.title)}</span>
+                                `).join('') : '<p class="text-xs text-slate-400 italic">No verified risk items for this contract.</p>'}
                             </div>
                         ` : `
                             <div class="p-4 max-h-[400px] overflow-y-auto custom-scrollbar">
@@ -723,13 +763,13 @@ function renderInvestorView() {
                                                         <div class="flex justify-between items-start p-2 bg-red-50 dark:bg-red-950/20 rounded border border-red-100 dark:border-red-900/30">
                                                             <div class="min-w-0 pr-2">
                                                                 <p class="text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate">
-                                                                    ${r.raw}
+                                                                    ${escapeHtml(r.raw)}
                                                                     ${r.possibleDuplicate ? '<span class="ml-1 px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] font-bold align-middle whitespace-nowrap">possible duplicate</span>' : ''}
                                                                 </p>
-                                                                <p class="text-[10px] text-slate-500 line-clamp-1">${r.reason}</p>
+                                                                <p class="text-[10px] text-slate-500 line-clamp-1">${escapeHtml(r.reason || '')}</p>
                                                             </div>
                                                             <div class="flex items-center gap-1 shrink-0">
-                                                                <span class="text-[11px] font-black text-red-600 whitespace-nowrap">$${new Intl.NumberFormat().format(r.amount)}</span>
+                                                                <span class="text-[11px] font-black text-red-600 whitespace-nowrap">${displayMoney(Number(r.amount))}</span>
                                                                 ${r.sourceContext ? `<button class="text-slate-400 hover:text-primary" title="Show source" onclick="toggleSourceRow('risk-${idx}')"><span class="material-symbols-outlined text-[14px]">visibility</span></button>` : ''}
                                                             </div>
                                                         </div>
@@ -749,13 +789,13 @@ function renderInvestorView() {
                                                         <div class="flex justify-between items-start p-2 bg-slate-50 dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-700">
                                                             <div class="min-w-0 pr-2">
                                                                 <p class="text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate">
-                                                                    ${o.raw}
+                                                                    ${escapeHtml(o.raw)}
                                                                     ${o.possibleDuplicate ? '<span class="ml-1 px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] font-bold align-middle whitespace-nowrap">possible duplicate</span>' : ''}
                                                                 </p>
-                                                                <p class="text-[10px] text-slate-500 line-clamp-1">${o.reason}</p>
+                                                                <p class="text-[10px] text-slate-500 line-clamp-1">${escapeHtml(o.reason || '')}</p>
                                                             </div>
                                                             <div class="flex items-center gap-1 shrink-0">
-                                                                <span class="text-[11px] font-black text-primary whitespace-nowrap">$${new Intl.NumberFormat().format(o.amount)}</span>
+                                                                <span class="text-[11px] font-black text-primary whitespace-nowrap">${displayMoney(Number(o.amount))}</span>
                                                                 ${o.sourceContext ? `<button class="text-slate-400 hover:text-primary" title="Show source" onclick="toggleSourceRow('obligation-${idx}')"><span class="material-symbols-outlined text-[14px]">visibility</span></button>` : ''}
                                                             </div>
                                                         </div>
@@ -766,18 +806,64 @@ function renderInvestorView() {
                                         </div>
                                     ` : ''}
 
+                                    ${(analysis.numericFigures.rates || []).length > 0 ? `
+                                        <div>
+                                            <p class="text-[10px] font-bold text-slate-400 uppercase mb-2">Rates (per-unit — excluded from totals)</p>
+                                            <div class="space-y-2">
+                                                ${analysis.numericFigures.rates.map((r, idx) => `
+                                                    <div class="flex flex-col gap-1">
+                                                        <div class="flex justify-between items-start p-2 bg-slate-50 dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-700">
+                                                            <div class="min-w-0 pr-2">
+                                                                <p class="text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate">${escapeHtml(r.raw)}</p>
+                                                                <p class="text-[10px] text-slate-500 line-clamp-1">${escapeHtml(r.reason || '')}</p>
+                                                            </div>
+                                                            <div class="flex items-center gap-1 shrink-0">
+                                                                <span class="text-[11px] font-black text-slate-500 whitespace-nowrap">${displayMoney(Number(r.amount))}</span>
+                                                                ${r.sourceContext ? `<button class="text-slate-400 hover:text-primary" title="Show source" onclick="toggleSourceRow('rate-${idx}')"><span class="material-symbols-outlined text-[14px]">visibility</span></button>` : ''}
+                                                            </div>
+                                                        </div>
+                                                        ${r.sourceContext ? `<div id="src-rate-${idx}" class="hidden px-2 py-1.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded text-[10px] text-slate-500 dark:text-slate-400 italic">"${escapeHtml(r.sourceContext)}"</div>` : ''}
+                                                    </div>
+                                                `).join('')}
+                                            </div>
+                                        </div>
+                                    ` : ''}
+
+                                    ${(analysis.numericFigures.insuranceRequirements || []).length > 0 ? `
+                                        <div>
+                                            <p class="text-[10px] font-bold text-slate-400 uppercase mb-2">Insurance requirements (excluded from exposure)</p>
+                                            <div class="space-y-2">
+                                                ${analysis.numericFigures.insuranceRequirements.map((r, idx) => `
+                                                    <div class="flex flex-col gap-1">
+                                                        <div class="flex justify-between items-start p-2 bg-slate-50 dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-700">
+                                                            <div class="min-w-0 pr-2">
+                                                                <p class="text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate">${escapeHtml(r.raw)}</p>
+                                                                <p class="text-[10px] text-slate-500 line-clamp-1">${escapeHtml(r.reason || '')}</p>
+                                                            </div>
+                                                            <div class="flex items-center gap-1 shrink-0">
+                                                                <span class="text-[11px] font-black text-slate-500 whitespace-nowrap">${displayMoney(Number(r.amount))}</span>
+                                                                ${r.sourceContext ? `<button class="text-slate-400 hover:text-primary" title="Show source" onclick="toggleSourceRow('insurance-${idx}')"><span class="material-symbols-outlined text-[14px]">visibility</span></button>` : ''}
+                                                            </div>
+                                                        </div>
+                                                        ${r.sourceContext ? `<div id="src-insurance-${idx}" class="hidden px-2 py-1.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded text-[10px] text-slate-500 dark:text-slate-400 italic">"${escapeHtml(r.sourceContext)}"</div>` : ''}
+                                                    </div>
+                                                `).join('')}
+                                            </div>
+                                        </div>
+                                    ` : ''}
+
                                     <div class="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-2">
                                         <div class="flex justify-between items-center">
                                             <span class="text-xs font-bold text-slate-500">Total Potential Loss</span>
-                                            <span class="text-sm font-black text-red-600">$${new Intl.NumberFormat().format(analysis.numericFigures.totalPotentialLoss)}</span>
+                                            <span class="text-sm font-black text-red-600">${displayMoney(analysis.numericFigures.totalPotentialLoss)}</span>
                                         </div>
                                         <div class="flex justify-between items-center">
                                             <span class="text-xs font-bold text-slate-500">Total Amount Owed</span>
-                                            <span class="text-sm font-black text-primary">$${new Intl.NumberFormat().format(analysis.numericFigures.totalAmountOwed)}</span>
+                                            <span class="text-sm font-black text-primary">${displayMoney(analysis.numericFigures.totalAmountOwed)}</span>
                                         </div>
                                         <div class="flex justify-between items-center p-2 bg-slate-900 dark:bg-white rounded-lg">
                                             <span class="text-xs font-bold text-slate-300 dark:text-slate-600">LGD Percentage</span>
-                                            <span class="text-sm font-black text-white dark:text-slate-900">${analysis.lgdScore}%</span>
+                                            <span class="text-sm font-black text-white dark:text-slate-900">${Number.isFinite(analysis.lgdScore) ? `${analysis.lgdScore}%` : 'Not computable'}</span>
                                         </div>
                                         ${renderLgdBreakdownText(analysis) ? `<p class="text-[10px] text-slate-400 text-right">${renderLgdBreakdownText(analysis)}</p>` : ''}
                                     </div>
@@ -786,23 +872,26 @@ function renderInvestorView() {
                         `}
                     </div>
                     <div class="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-4 pb-4">
-                                                    ${clauseItems.map(item => `
+                                                    ${clauseItems.length > 0 ? clauseItems.map(item => `
                             <div class="flex flex-col gap-3">
-                                <h4 class="text-xs font-bold uppercase text-slate-400 tracking-widest px-1">Clause ${item.section || '—'}: Summary</h4>
+                                <h4 class="text-xs font-bold uppercase text-slate-400 tracking-widest px-1">Clause ${displayField(item.section, '—')}: Summary</h4>
                                 <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm border-l-4 border-l-primary hover:shadow-md transition-shadow">
                                     <div class="flex justify-between items-start mb-2">
-                                        <span class="text-xs font-bold text-slate-500 uppercase">Clause ${item.section || '—'}</span>
-                                        ${item.financialImpact ? `<span class="text-xs font-semibold text-primary">Impact: ${item.financialImpact}</span>` : ''}
+                                        <span class="text-xs font-bold text-slate-500 uppercase">Clause ${displayField(item.section, '—')}</span>
+                                        ${item.source === 'keyword-scan' ? '<span class="text-[9px] font-bold uppercase text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">keyword scan</span>' : ''}
+                                        ${item.financialImpact ? `<span class="text-xs font-semibold text-primary">Impact: ${escapeHtml(item.financialImpact)}</span>` : ''}
                                     </div>
-                                    <h5 class="text-sm font-bold mb-1">${item.title}</h5>
-                                    <p class="text-xs text-slate-600 dark:text-slate-400 mb-3">${item.description}</p>
-                                    <div class="flex items-center gap-1 mt-auto pt-3 border-t border-slate-50 dark:border-slate-800">
-                                        <span class="material-symbols-outlined text-xs text-primary">attach_money</span>
-                                        <span class="text-xs font-bold">${item.financialImpact || '—'}</span>
-                                    </div>
+                                    <h5 class="text-sm font-bold mb-1">${escapeHtml(item.title)}</h5>
+                                    <p class="text-xs text-slate-600 dark:text-slate-400 mb-3">${escapeHtml(item.description)}</p>
+                                    ${item.financialImpact ? `
+                                        <div class="flex items-center gap-1 mt-auto pt-3 border-t border-slate-50 dark:border-slate-800">
+                                            <span class="material-symbols-outlined text-xs text-primary">attach_money</span>
+                                            <span class="text-xs font-bold">${escapeHtml(item.financialImpact)}</span>
+                                        </div>
+                                    ` : ''}
                                 </div>
                             </div>
-                        `).join('')}
+                        `).join('') : '<p class="text-xs text-slate-400 italic px-1">No verified risk items for this contract.</p>'}
                     </div>
                 </div>
             </div>
@@ -817,11 +906,9 @@ function renderPartnerView() {
 
     const analysis = state.currentAnalysis;
     const flaggedClauses = Array.isArray(analysis.enforceabilityRisks) ? analysis.enforceabilityRisks.length : 0;
-    const totalClauses = analysis.totalClauses || analysis.clauses || 0;
-    const lgdScore = Number(analysis.lgdScore) || 0;
-    const complianceScore = typeof analysis.complianceScore === 'number'
-        ? `${analysis.complianceScore}%`
-        : (analysis.investorCompliance || 'N/A');
+    const totalClauses = Number.isFinite(analysis.totalClauses) ? analysis.totalClauses : null;
+    const lgdScore = Number.isFinite(analysis.lgdScore) ? analysis.lgdScore : null;
+    const compliance = complianceDisplay(analysis);
     const deliverableCount = Array.isArray(analysis.deliverables) ? analysis.deliverables.length : 0;
     const actionItemCount = Array.isArray(analysis.actionItems) ? analysis.actionItems.length : 0;
     const timelineCount = Array.isArray(analysis.timelines) ? analysis.timelines.length : 0;
@@ -851,33 +938,36 @@ function renderPartnerView() {
                 <div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-900 border border-[#cfdbe7] dark:border-slate-800 shadow-sm border-l-4 border-l-red-500">
                     <p class="text-[#4c739a] text-xs font-semibold uppercase tracking-wider">Total Financial Exposure</p>
                     <div class="flex items-baseline gap-2">
-                        <p class="text-[#0d141b] dark:text-white text-3xl font-bold">${analysis.financialExposure}</p>
+                        <p class="text-[#0d141b] dark:text-white text-3xl font-bold">${displayField(analysis.financialExposure)}</p>
                     </div>
-                    <p class="text-[#4c739a] text-xs">${analysis.riskExplanation || 'Relevant monetary sum (LLM-selected)'}</p>
+                    <p class="text-[#4c739a] text-xs">${(analysis.calculations?.exposure?.items?.length || 0) > 0 ? `Sum of ${analysis.calculations.exposure.items.length} amount(s) verified in contract text` : 'No verified risk amounts found in contract text'}</p>
+                    ${analysis.riskExplanation ? `<p class="text-[10px] text-slate-400 italic">AI commentary (unverified): ${escapeHtml(analysis.riskExplanation)}</p>` : ''}
                 </div>
                 <div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-900 border border-[#cfdbe7] dark:border-slate-800 shadow-sm">
                     <p class="text-[#4c739a] text-xs font-semibold uppercase tracking-wider">Compliance Score</p>
                     <div class="flex items-baseline gap-2">
-                        <p class="text-[#0d141b] dark:text-white text-3xl font-bold">${complianceScore}</p>
+                        <p class="text-3xl font-bold ${compliance.cls}">${compliance.text}</p>
                     </div>
-                    <p class="text-[#4c739a] text-xs">Policy coverage across key areas</p>
+                    <p class="text-[#4c739a] text-xs">${Array.isArray(analysis.complianceChecks) && analysis.complianceChecks.length > 0 ? `${analysis.complianceChecks.length} check(s) evaluated` : 'Not determined'}</p>
                 </div>
                 <div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-900 border border-[#cfdbe7] dark:border-slate-800 shadow-sm">
                     <p class="text-[#4c739a] text-xs font-semibold uppercase tracking-wider">Loss Given Default (LGD)</p>
                     <div class="flex items-baseline gap-2">
-                        <p class="text-[#0d141b] dark:text-white text-3xl font-bold">${lgdScore}%</p>
+                        <p class="text-[#0d141b] dark:text-white text-3xl font-bold">${lgdScore !== null ? `${lgdScore}%` : 'Not computable'}</p>
                     </div>
-                    <div class="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full mt-1">
-                        <div class="bg-primary h-full rounded-full" style="width: ${lgdScore}%"></div>
-                    </div>
-                    ${analysis.llmComments ? `<p class="text-[10px] text-amber-600 dark:text-amber-400 mt-2 font-medium italic">${analysis.llmComments}</p>` : ''}
+                    ${lgdScore !== null ? `
+                        <div class="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full mt-1">
+                            <div class="bg-primary h-full rounded-full" style="width: ${lgdScore}%"></div>
+                        </div>
+                    ` : ''}
+                    ${analysis.llmComments ? `<p class="text-[10px] text-amber-600 dark:text-amber-400 mt-2 font-medium italic">${escapeHtml(analysis.llmComments)}</p>` : ''}
                 </div>
                 <div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-900 border border-[#cfdbe7] dark:border-slate-800 shadow-sm">
                     <p class="text-[#4c739a] text-xs font-semibold uppercase tracking-wider">Ambiguous Clauses</p>
                     <div class="flex items-baseline gap-2">
                         <p class="text-[#0d141b] dark:text-white text-3xl font-bold">${flaggedClauses}</p>
                     </div>
-                    <p class="text-[#4c739a] text-xs">Flagged out of ${totalClauses || 'N/A'} clauses</p>
+                    <p class="text-[#4c739a] text-xs">${totalClauses !== null ? `Flagged out of ${totalClauses} ${analysis.clauseCountLevel === 'section' ? 'sections' : 'clauses'}` : 'Clause count not determined'}</p>
                 </div>
             </div>
 
@@ -927,11 +1017,11 @@ function renderPartnerView() {
                             ` : clauseFlags.map(flag => `
                                 <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                                     <div class="flex justify-between items-start mb-2">
-                                        <span class="text-[10px] uppercase text-slate-400 font-bold">Clause ${flag.section || '—'}</span>
+                                        <span class="text-[10px] uppercase text-slate-400 font-bold">Clause ${displayField(flag.section, '—')}</span>
                                         <span class="material-symbols-outlined text-slate-300 text-sm">flag</span>
                                     </div>
-                                    <h5 class="text-sm font-bold mb-1">${flag.title}</h5>
-                                    <p class="text-xs text-slate-600 dark:text-slate-400">${flag.description}</p>
+                                    <h5 class="text-sm font-bold mb-1">${escapeHtml(flag.title)}</h5>
+                                    <p class="text-xs text-slate-600 dark:text-slate-400">${escapeHtml(flag.description)}</p>
                                 </div>
                             `).join('')}
                         </div>
@@ -939,13 +1029,15 @@ function renderPartnerView() {
                         <div class="flex flex-col gap-3">
                             <h4 class="text-xs font-bold uppercase text-slate-400 tracking-widest px-1">Compliance Checks</h4>
                             <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-                                <div class="flex items-center justify-between mb-2">
-                                    <span class="text-xs text-slate-500">Checks Passed</span>
-                                    <span class="text-xs font-bold text-emerald-600">${compliancePassCount}/${complianceChecks.length || 0}</span>
-                                </div>
-                                <div class="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full">
-                                    <div class="bg-emerald-500 h-full rounded-full" style="width: ${complianceChecks.length ? Math.round((compliancePassCount / complianceChecks.length) * 100) : 0}%"></div>
-                                </div>
+                                ${complianceChecks.length > 0 ? `
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="text-xs text-slate-500">Checks Passed</span>
+                                        <span class="text-xs font-bold text-emerald-600">${compliancePassCount}/${complianceChecks.length}</span>
+                                    </div>
+                                    <div class="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full">
+                                        <div class="bg-emerald-500 h-full rounded-full" style="width: ${Math.round((compliancePassCount / complianceChecks.length) * 100)}%"></div>
+                                    </div>
+                                ` : `<p class="text-xs text-slate-400 italic">No compliance checks verified</p>`}
                             </div>
                         </div>
 
@@ -999,15 +1091,15 @@ function renderLegalView() {
                     <div class="grid grid-cols-3 gap-2">
                         <div class="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-center">
                             <p class="text-[10px] text-slate-500 uppercase font-bold">Risk Level</p>
-                            <p class="text-sm font-bold text-amber-500">${legalAnalysis.overallRisk}</p>
+                            <p class="text-sm font-bold ${riskLevelClasses(legalAnalysis.overallRisk)}">${displayField(legalAnalysis.overallRisk, 'Not determined')}</p>
                         </div>
                         <div class="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-center">
                             <p class="text-[10px] text-slate-500 uppercase font-bold">Compliance</p>
-                            <p class="text-sm font-bold text-emerald-500">${legalAnalysis.complianceScore}%</p>
+                            <p class="text-sm font-bold ${complianceDisplay(legalAnalysis).cls}">${complianceDisplay(legalAnalysis).text}</p>
                         </div>
                         <div class="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-center">
-                            <p class="text-[10px] text-slate-500 uppercase font-bold">Clauses</p>
-                            <p class="text-sm font-bold text-primary">${legalAnalysis.clauses}/${legalAnalysis.totalClauses}</p>
+                            <p class="text-[10px] text-slate-500 uppercase font-bold">Flagged / Clauses</p>
+                            <p class="text-sm font-bold text-primary">${(legalAnalysis.enforceabilityRisks?.length ?? 0)}/${legalAnalysis.totalClauses ?? '—'}</p>
                         </div>
                     </div>
                 </div>
@@ -1034,17 +1126,17 @@ function renderLegalView() {
                                 <div class="flex items-center gap-4 p-4 bg-white dark:bg-slate-900 rounded-xl border border-primary/30 ring-1 ring-primary/10">
                                     <div class="size-10 rounded-full bg-primary text-white flex items-center justify-center text-xs font-bold">v${(state.currentContract.versions?.length || 0) + 1}</div>
                                     <div class="text-left flex-1 min-w-0">
-                                        <p class="text-sm font-bold text-primary truncate">${state.currentContract.originalName || state.currentContract.name}</p>
+                                        <p class="text-sm font-bold text-primary truncate">${escapeHtml(state.currentContract.originalName || state.currentContract.name)}</p>
                                         <p class="text-xs text-slate-500">Current active version • ${formatDate(state.currentContract.uploadDate || new Date().toISOString())}</p>
                                     </div>
                                 </div>
-                                
+
                                 <!-- Historical Versions -->
                                 ${(state.currentContract.versions || []).slice().reverse().map(v => `
                                     <div class="flex items-center gap-4 p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 opacity-70 hover:opacity-100 transition-opacity">
                                         <div class="size-10 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center text-xs font-bold">v${v.version}</div>
                                         <div class="text-left flex-1 min-w-0">
-                                            <p class="text-sm font-bold truncate text-slate-700 dark:text-slate-300">${v.originalName || v.name}</p>
+                                            <p class="text-sm font-bold truncate text-slate-700 dark:text-slate-300">${escapeHtml(v.originalName || v.name)}</p>
                                             <p class="text-xs text-slate-500">Superseded • ${formatDate(v.uploadDate)}</p>
                                         </div>
                                     </div>
@@ -1058,15 +1150,18 @@ function renderLegalView() {
                                 Compliance Checks
                             </h4>
                             <div class="space-y-2">
-                                ${legalAnalysis.complianceChecks.map(check => `
+                                ${legalAnalysis.complianceChecks.length > 0 ? legalAnalysis.complianceChecks.map(check => {
+                                    const icon = check.status === 'pass' ? 'check_circle' : (check.status === 'unverified' ? 'help' : 'report_problem');
+                                    const iconCls = check.status === 'pass' ? 'text-emerald-500' : (check.status === 'unverified' ? 'text-slate-400' : 'text-amber-500');
+                                    return `
                                     <div class="flex items-start gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30">
-                                        <span class="material-symbols-outlined ${check.status === 'pass' ? 'text-emerald-500' : 'text-amber-500'}">${check.status === 'pass' ? 'check_circle' : 'report_problem'}</span>
+                                        <span class="material-symbols-outlined ${iconCls}">${icon}</span>
                                         <div>
-                                            <p class="text-sm font-semibold">${check.name}</p>
-                                            <p class="text-xs text-slate-500">${check.note}</p>
+                                            <p class="text-sm font-semibold">${escapeHtml(check.name)}</p>
+                                            <p class="text-xs text-slate-500">${escapeHtml(check.note)}</p>
                                         </div>
                                     </div>
-                                `).join('')}
+                                `; }).join('') : `<p class="text-xs text-slate-400 italic">No compliance checks could be verified against the contract text.</p>`}
                             </div>
                         </div>
 
@@ -1077,16 +1172,16 @@ function renderLegalView() {
                                 <span class="bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full text-[9px] font-bold tracking-normal">${legalAnalysis.enforceabilityRisks.length} ALERTS</span>
                             </h4>
                             <div class="space-y-3">
-                                ${legalAnalysis.enforceabilityRisks.map(risk => `
+                                ${legalAnalysis.enforceabilityRisks.length > 0 ? legalAnalysis.enforceabilityRisks.map(risk => `
                                     <div class="p-3 rounded-lg border border-red-200 dark:border-red-900 bg-red-50/50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-900">
                                         <div class="flex justify-between items-start mb-2">
-                                            <span class="bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">${risk.risk || 'RISK'}</span>
+                                            <span class="bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">${escapeHtml(risk.risk || 'RISK')}</span>
                                         </div>
-                                        <p class="text-sm font-bold text-red-900 dark:text-red-400 mb-1">${risk.title}</p>
-                                        <p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-2">${risk.description}</p>
-                                        ${risk.quote && risk.quote !== 'Not specified' ? `<div class="mt-2 mb-3 bg-white dark:bg-slate-900 p-2 border-l-2 border-red-500 rounded shadow-sm text-[10px] text-slate-700 dark:text-slate-300 italic">"${risk.quote}"</div>` : ''}
+                                        <p class="text-sm font-bold text-red-900 dark:text-red-400 mb-1">${escapeHtml(risk.title)}</p>
+                                        <p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-2">${escapeHtml(risk.description)}</p>
+                                        ${risk.quote && risk.quote !== 'Not specified' ? `<div class="mt-2 mb-3 bg-white dark:bg-slate-900 p-2 border-l-2 border-red-500 rounded shadow-sm text-[10px] text-slate-700 dark:text-slate-300 italic">"${escapeHtml(risk.quote)}"</div>` : ''}
                                     </div>
-                                `).join('')}
+                                `).join('') : `<p class="text-xs text-slate-400 italic">No enforceability risks could be verified against the contract text.</p>`}
                             </div>
                         </div>
 
@@ -1099,15 +1194,15 @@ function renderLegalView() {
                                         <span class="material-symbols-outlined text-primary">location_on</span>
                                     </div>
                                     <div>
-                                        <p class="text-sm font-bold">${legalAnalysis.jurisdiction.location}</p>
-                                        <p class="text-xs text-slate-500">Governing Law (${legalAnalysis.jurisdiction.governingLaw})</p>
+                                        <p class="text-sm font-bold ${[EMPTY_FIELD_TEXT, 'Not determined'].includes(legalAnalysis.jurisdiction.location) ? 'text-slate-400 italic' : ''}">${displayField(legalAnalysis.jurisdiction.location, 'Not determined')}</p>
+                                        <p class="text-xs text-slate-500">Governing Law (${displayField(legalAnalysis.jurisdiction.governingLaw, 'Not determined')})</p>
                                     </div>
                                 </div>
                                 <ul class="space-y-2">
-                                    ${legalAnalysis.jurisdiction.notes.map(note => `
+                                    ${(legalAnalysis.jurisdiction.notes || []).map(note => `
                                         <li class="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
                                             <span class="size-1.5 bg-primary rounded-full"></span>
-                                            ${note}
+                                            ${escapeHtml(note)}
                                         </li>
                                     `).join('')}
                                 </ul>
@@ -1179,23 +1274,21 @@ function renderPMView() {
                                 <h3 class="font-bold text-base">Key Deliverables</h3>
                             </div>
                             <div class="space-y-3">
-                                ${pmAnalysis.deliverables.map(del => `
+                                ${pmAnalysis.deliverables.length > 0 ? pmAnalysis.deliverables.map((del, idx) => `
                                     <div class="bg-white dark:bg-[#1a2530] p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
                                         <div class="flex justify-between items-start">
-                                            <p class="text-sm font-bold">${del.name}</p>
-                                            <span class="px-2 py-0.5 rounded-full ${del.status === 'IN PROGRESS' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'} text-[10px] font-bold">${del.status}</span>
+                                            <p class="text-sm font-bold">${escapeHtml(del.name)}</p>
+                                            ${del.status ? `<span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 text-[10px] font-bold">${escapeHtml(del.status)}</span>` : ''}
                                         </div>
-                                        <p class="text-xs text-slate-500 mt-1">Due: ${del.due}</p>
-                                        ${del.progress > 0 ? `
-                                            <div class="mt-3 flex items-center gap-2">
-                                                <div class="h-1.5 flex-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                                    <div class="h-full bg-primary" style="width: ${del.progress}%"></div>
-                                                </div>
-                                                <span class="text-[10px] font-medium text-slate-500">${del.progress}%</span>
-                                            </div>
+                                        <p class="text-xs text-slate-500 mt-1">Due: ${displayField(del.due, 'Not specified')}</p>
+                                        ${del.quote ? `
+                                            <button class="text-[10px] text-slate-400 hover:text-primary mt-2 flex items-center gap-1" onclick="toggleSourceRow('deliverable-${idx}')">
+                                                <span class="material-symbols-outlined text-[12px]">visibility</span> Show source
+                                            </button>
+                                            <div id="src-deliverable-${idx}" class="hidden mt-1 px-2 py-1.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded text-[10px] text-slate-500 dark:text-slate-400 italic">"${escapeHtml(del.quote)}"</div>
                                         ` : ''}
                                     </div>
-                                `).join('')}
+                                `).join('') : `<p class="text-xs text-slate-400 italic">No deliverables are explicitly defined in the contract.</p>`}
                             </div>
                         </section>
 
@@ -1208,15 +1301,15 @@ function renderPMView() {
                             <div class="grid grid-cols-2 gap-3">
                                 <div class="bg-white dark:bg-[#1a2530] p-3 rounded-xl border border-slate-200 dark:border-slate-800">
                                     <p class="text-[10px] font-bold text-slate-400 uppercase">Customer Data</p>
-                                    <p class="text-sm font-bold text-green-600 dark:text-green-400">${pmAnalysis.ipRights.customerData}</p>
+                                    <p class="text-sm font-bold">${displayField(pmAnalysis.ipRights.customerData, 'Not specified')}</p>
                                 </div>
                                 <div class="bg-white dark:bg-[#1a2530] p-3 rounded-xl border border-slate-200 dark:border-slate-800">
                                     <p class="text-[10px] font-bold text-slate-400 uppercase">SaaS Software</p>
-                                    <p class="text-sm font-bold text-primary">${pmAnalysis.ipRights.saasSoftware}</p>
+                                    <p class="text-sm font-bold">${displayField(pmAnalysis.ipRights.saasSoftware, 'Not specified')}</p>
                                 </div>
                                 <div class="bg-white dark:bg-[#1a2530] p-3 rounded-xl border border-slate-200 dark:border-slate-800 col-span-2">
                                     <p class="text-[10px] font-bold text-slate-400 uppercase">Usage Restrictions</p>
-                                    <p class="text-xs mt-1 text-slate-700 dark:text-slate-300">${pmAnalysis.ipRights.usageRestrictions}</p>
+                                    <p class="text-xs mt-1 text-slate-700 dark:text-slate-300">${displayField(pmAnalysis.ipRights.usageRestrictions, 'Not specified')}</p>
                                 </div>
                             </div>
                         </section>
@@ -1227,15 +1320,18 @@ function renderPMView() {
                                 <span class="material-symbols-outlined text-primary">schedule</span>
                                 <h3 class="font-bold text-base">Project Timelines</h3>
                             </div>
-                            <div class="relative pl-6 space-y-6 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200 dark:before:bg-slate-800">
-                                ${pmAnalysis.timelines.map((tl, i) => `
-                                    <div class="relative">
-                                        <div class="absolute -left-[19px] top-1 size-3 rounded-full ${i < 2 ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-700'} ring-4 ring-white dark:ring-background-dark"></div>
-                                        <p class="text-xs font-bold">${tl.event}</p>
-                                        <p class="text-[11px] text-slate-500">${tl.date}</p>
-                                    </div>
-                                `).join('')}
-                            </div>
+                            ${pmAnalysis.timelines.length > 0 ? `
+                                <div class="relative pl-6 space-y-6 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200 dark:before:bg-slate-800">
+                                    ${pmAnalysis.timelines.map((tl, i) => `
+                                        <div class="relative">
+                                            <div class="absolute -left-[19px] top-1 size-3 rounded-full bg-slate-300 dark:bg-slate-700 ring-4 ring-white dark:ring-background-dark"></div>
+                                            <p class="text-xs font-bold">${escapeHtml(tl.event)}</p>
+                                            <p class="text-[11px] text-slate-500">${displayField(tl.date, 'Not specified')}</p>
+                                            ${tl.quote ? `<p class="text-[10px] text-slate-400 italic mt-1">"${escapeHtml(tl.quote)}"</p>` : ''}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            ` : `<p class="text-xs text-slate-400 italic">No dates or milestones are specified in the contract.</p>`}
                         </section>
 
                         <!-- Section: Action Items -->
@@ -1247,17 +1343,17 @@ function renderPMView() {
                                 </div>
                             </div>
                             <div class="space-y-2">
-                                ${pmAnalysis.actionItems.map(item => `
+                                ${pmAnalysis.actionItems.length > 0 ? pmAnalysis.actionItems.map(item => `
                                     <div class="flex items-center gap-3 bg-white dark:bg-[#1a2530] p-3 rounded-xl border border-slate-200 dark:border-slate-800 group transition-colors">
                                         <div class="size-5 rounded border-2 border-slate-200 dark:border-slate-700 flex items-center justify-center text-transparent group-hover:text-primary transition-colors">
                                             <span class="material-symbols-outlined !text-[14px]">check</span>
                                         </div>
                                         <div class="flex-1">
-                                            <p class="text-xs font-medium">${item.task}</p>
-                                            <p class="text-[10px] text-slate-400">Assigned: ${item.assigned}</p>
+                                            <p class="text-xs font-medium">${escapeHtml(item.task)}</p>
+                                            <p class="text-[10px] text-slate-400">Assigned: ${displayField(item.assigned, 'Not specified')}</p>
                                         </div>
                                     </div>
-                                `).join('')}
+                                `).join('') : `<p class="text-xs text-slate-400 italic">No action items are specified in the contract.</p>`}
                             </div>
                         </section>
                     </div>

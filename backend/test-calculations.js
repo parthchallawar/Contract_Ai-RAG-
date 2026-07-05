@@ -7,7 +7,12 @@ const {
   parseNumericAmount,
   extractMonetaryCandidates,
   verifyMonetaryItems,
-  computeLossGivenDefaultScore
+  computeLossGivenDefaultScore,
+  reclassifyMonetaryItems,
+  isSumEligible,
+  countContractClauses,
+  verifyLegalInsights,
+  verifyPMInsights
 } = require('./server');
 
 let failures = 0;
@@ -48,6 +53,33 @@ check('every candidate has a numeric index', filterCandidates.every(c => Number.
 check('stats are internally consistent (scanned = emitted + filtered)',
   filterStats.scanned === filterStats.emitted + filterStats.filtered, JSON.stringify(filterStats));
 check('stats.emitted matches candidates length', filterStats.emitted === filterCandidates.length);
+
+// --- extractMonetaryCandidates: percentages and subsection numbers ----------
+console.log('\n2b. extractMonetaryCandidates: percentages and subsection numbers rejected');
+{
+  const text = `Late payments shall accrue interest at 1.5% per month or the maximum rate permitted by law.
+2.4 Upon termination for any reason, Client shall pay Provider for all Services performed.
+3.1 Client shall pay Provider a total fixed fee of $480,000 for the Services.`;
+  const { candidates } = extractMonetaryCandidates(text, 160);
+  check('does not emit the 1.5% interest rate as a candidate',
+    !candidates.some(c => c.raw === '1.5'), JSON.stringify(candidates.map(c => c.raw)));
+  check('does not emit the "2.4" section number as a candidate',
+    !candidates.some(c => c.raw === '2.4'), JSON.stringify(candidates.map(c => c.raw)));
+  check('does not emit the "3.1" section number as a candidate',
+    !candidates.some(c => c.raw === '3.1'), JSON.stringify(candidates.map(c => c.raw)));
+  check('still emits the $480,000 currency-marked amount',
+    candidates.some(c => c.raw.includes('480,000') && c.hasCurrencyMarker === true));
+}
+{
+  const { candidates } = extractMonetaryCandidates('There is also a late fee of 1,500 for overdue invoices.', 160);
+  check('bare "1,500" late fee is emitted with hasCurrencyMarker: false',
+    candidates.some(c => c.raw.includes('1,500') && c.hasCurrencyMarker === false));
+}
+{
+  const { candidates } = extractMonetaryCandidates('A $50,000 penalty applies for late submissions.', 160);
+  check('"$50,000" is emitted with hasCurrencyMarker: true',
+    candidates.some(c => c.raw.includes('50,000') && c.hasCurrencyMarker === true));
+}
 
 // --- verifyMonetaryItems -----------------------------------------------------
 console.log('\n3. verifyMonetaryItems');
@@ -132,7 +164,10 @@ console.log('\n3. verifyMonetaryItems');
 
 // --- computeLossGivenDefaultScore -------------------------------------------
 console.log('\n4. computeLossGivenDefaultScore');
-check('owed 0 -> 0', computeLossGivenDefaultScore({ totalPotentialLoss: 50000, totalAmountOwed: 0 }) === 0);
+check('owed 0 -> null (not computable, not a fake 0)',
+  computeLossGivenDefaultScore({ totalPotentialLoss: 50000, totalAmountOwed: 0 }) === null);
+check('owed null -> null',
+  computeLossGivenDefaultScore({ totalPotentialLoss: 50000, totalAmountOwed: null }) === null);
 check('loss 50k / owed 100k -> 50',
   computeLossGivenDefaultScore({ totalPotentialLoss: 50000, totalAmountOwed: 100000 }) === 50);
 check('loss 200k / owed 100k -> clamped 100',
@@ -152,6 +187,134 @@ console.log('\n5. Determinism');
   const resultA = JSON.stringify(verifyMonetaryItems(parsed, candidates));
   const resultB = JSON.stringify(verifyMonetaryItems(parsed, candidates));
   check('same inputs run twice -> identical output', resultA === resultB);
+}
+
+// --- reclassifyMonetaryItems --------------------------------------------------
+console.log('\n6. reclassifyMonetaryItems');
+{
+  const insuranceItem = { raw: '$2,000,000', amount: 2000000, sourceContext: 'commercial general liability insurance with coverage of not less than $2,000,000 per occurrence' };
+  const rateItem = { raw: '$275', amount: 275, sourceContext: 'billed at the standard hourly rate of $275 per hour' };
+  const genuineRisk = { raw: '$50,000', amount: 50000, sourceContext: 'liquidated damages of $50,000 per violation' };
+  const result = reclassifyMonetaryItems({ risks: [insuranceItem, genuineRisk], obligations: [rateItem], rates: [], insuranceRequirements: [] });
+  check('insurance-context risk item moved to insuranceRequirements',
+    result.insuranceRequirements.some(i => i.raw === '$2,000,000') && !result.risks.some(i => i.raw === '$2,000,000'),
+    JSON.stringify(result));
+  check('per-hour obligation item moved to rates',
+    result.rates.some(i => i.raw === '$275') && !result.obligations.some(i => i.raw === '$275'),
+    JSON.stringify(result));
+  check('genuine liquidated-damages risk stays in risks',
+    result.risks.some(i => i.raw === '$50,000'), JSON.stringify(result));
+}
+{
+  // Same source occurrence classified by the LLM as both a "risk" and an
+  // "insuranceRequirement" — both verify independently, but the collapsed
+  // output should show it once, not twice.
+  const dup = { raw: '$2,000,000', amount: 2000000, sourceOffset: 3766, sourceContext: 'coverage of not less than $2,000,000 per occurrence' };
+  const result = reclassifyMonetaryItems({ risks: [dup], obligations: [], rates: [], insuranceRequirements: [{ ...dup }] });
+  check('duplicate source-offset insurance item collapses to one entry',
+    result.insuranceRequirements.length === 1, JSON.stringify(result.insuranceRequirements));
+}
+
+// --- isSumEligible -------------------------------------------------------------
+console.log('\n7. isSumEligible');
+check('currency-marked item is always eligible',
+  isSumEligible({ hasCurrencyMarker: true, amount: 12, sourceContext: 'twelve (12) months preceding the claim' }) === true);
+check('bare duration count ("twelve (12) months") is NOT eligible',
+  isSumEligible({ hasCurrencyMarker: false, amount: 12, sourceContext: 'twelve (12) months preceding the claim' }) === false);
+check('bare "late fee of 1,500" IS eligible (money noun + amount >= 100)',
+  isSumEligible({ hasCurrencyMarker: false, amount: 1500, sourceContext: 'a late fee of 1,500 for overdue invoices' }) === true);
+check('bare small number with money noun but < 100 is NOT eligible',
+  isSumEligible({ hasCurrencyMarker: false, amount: 30, sourceContext: 'a late fee of 30 for overdue invoices' }) === false);
+
+// --- selectMonetaryExposureWithLLM sum policy (via verifyMonetaryItems + reclassify + isSumEligible) ---
+console.log('\n8. obligation total uses max(), not sum() — collapses installment/total double-count');
+{
+  // Simulates the shape selectMonetaryExposureWithLLM builds internally: a
+  // $480,000 total fee and its own $80,000 quarterly installment are two
+  // separately-grounded obligation candidates.
+  const grounded = [
+    { raw: '$480,000', amount: 480000, hasCurrencyMarker: true, sourceContext: 'total fixed fee of $480,000 for the Services' },
+    { raw: '$80,000', amount: 80000, hasCurrencyMarker: true, sourceContext: 'six equal quarterly installments of $80,000' }
+  ];
+  const eligible = grounded.filter(isSumEligible);
+  let totalAmountOwed = null;
+  for (const o of eligible) {
+    const amount = Number(o.amount) || 0;
+    if (totalAmountOwed === null || amount > totalAmountOwed) totalAmountOwed = amount;
+  }
+  check('largest obligation (480,000) wins, not the sum (560,000)', totalAmountOwed === 480000, String(totalAmountOwed));
+}
+
+// --- countContractClauses ------------------------------------------------------
+console.log('\n9. countContractClauses');
+{
+  const msaExcerpt = `1. SERVICES
+1.1 Provider shall perform the Services.
+1.2 Provider shall assign a dedicated project lead.
+2. TERM AND TERMINATION
+2.1 This Agreement shall commence on the Effective Date.
+2.2 Either party may terminate this Agreement for convenience.
+3. FEES AND PAYMENT
+3.1 Client shall pay Provider a total fixed fee.
+3.2 Client shall reimburse Provider for expenses.`;
+  const result = countContractClauses(msaExcerpt);
+  // 6 subsection-shaped headings (1.1, 1.2, 2.1, 2.2, 3.1, 3.2); the three
+  // top-level "1./2./3." headings don't match the \d.\d subsection shape.
+  check('detects subsection-level numbering with a real count', result?.level === 'subsection' && result.total === 6, JSON.stringify(result));
+}
+check('unstructured prose returns null (no guessed count)',
+  countContractClauses('This is just a paragraph of ordinary prose with no numbered structure at all.') === null);
+check('empty text returns null', countContractClauses('') === null);
+
+// --- verifyLegalInsights / verifyPMInsights -------------------------------------
+console.log('\n10. verifyLegalInsights / verifyPMInsights');
+{
+  const text = 'The obligations of confidentiality under this Section 4 shall survive termination for a period of five (5) years. This Agreement shall be governed by the laws of the State of New York.';
+  const raw = {
+    overallRisk: 'Medium',
+    complianceScore: 70,
+    enforceabilityRisks: [
+      { id: 1, title: 'Confidentiality Survival', quote: 'The obligations of confidentiality under this Section 4 shall survive termination for a period of five (5) years.' },
+      { id: 2, title: 'Fabricated Risk', quote: 'This exact sentence does not appear anywhere in the contract.' }
+    ],
+    complianceChecks: [
+      { name: 'Confidentiality', status: 'pass', note: 'ok', quote: 'shall survive termination for a period of five (5) years' },
+      { name: 'Fabricated Check', status: 'pass', note: 'ok', quote: 'this quote is not in the text either' }
+    ],
+    jurisdiction: { location: 'New York', governingLaw: 'State of New York', notes: [] }
+  };
+  const { insights, droppedCount } = verifyLegalInsights(raw, text);
+  check('verbatim-quote enforceability risk is kept', insights.enforceabilityRisks.some(r => r.id === 1));
+  check('fabricated-quote enforceability risk is dropped', !insights.enforceabilityRisks.some(r => r.id === 2));
+  check('droppedCount reflects the one dropped risk', droppedCount === 1, String(droppedCount));
+  check('verbatim-quote compliance check keeps status pass', insights.complianceChecks[0].status === 'pass');
+  check('fabricated-quote compliance check is downgraded to unverified', insights.complianceChecks[1].status === 'unverified');
+  check('jurisdiction location found verbatim in text is kept', insights.jurisdiction.location === 'New York');
+}
+{
+  const text = 'This Agreement shall be governed by the laws of the State of New York.';
+  const raw = { jurisdiction: { location: 'State of Atlantis', governingLaw: 'Atlantean Maritime Code', notes: [] } };
+  const { insights } = verifyLegalInsights(raw, text);
+  check('jurisdiction location NOT found in text becomes "Not mentioned in the contract"',
+    insights.jurisdiction.location === 'Not mentioned in the contract', insights.jurisdiction.location);
+  check('jurisdiction governingLaw NOT found in text becomes "Not mentioned in the contract"',
+    insights.jurisdiction.governingLaw === 'Not mentioned in the contract', insights.jurisdiction.governingLaw);
+}
+{
+  const text = 'Provider shall deliver all work product completed to date within ten (10) business days.';
+  const raw = {
+    deliverables: [
+      { name: 'Work product', due: '10 business days', quote: 'deliver all work product completed to date within ten (10) business days' },
+      { name: 'Fabricated deliverable', due: 'never', quote: 'this quote does not exist in the contract text' }
+    ],
+    ipRights: { customerData: 'Not specified', saasSoftware: 'Not specified', usageRestrictions: 'Not specified', quotes: {} },
+    timelines: [],
+    actionItems: []
+  };
+  const { insights, droppedCount } = verifyPMInsights(raw, text);
+  check('verbatim-quote deliverable is kept', insights.deliverables.length === 1 && insights.deliverables[0].name === 'Work product');
+  check('fabricated-quote deliverable is dropped, droppedCount reflects it', droppedCount === 1, String(droppedCount));
+  check('"Not specified" ipRights strings pass through unchanged', insights.ipRights.customerData === 'Not specified');
 }
 
 console.log(failures === 0 ? '\nALL TESTS PASSED' : `\n${failures} TEST(S) FAILED`);
