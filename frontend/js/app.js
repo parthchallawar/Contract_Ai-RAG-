@@ -94,9 +94,9 @@ function renderGroundingBadge(analysisObj) {
     const grounding = analysisObj?.calculations?.grounding;
     if (!grounding || grounding.total === 0) return '';
     if (grounding.rate === 1) {
-        return `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 whitespace-nowrap">All ${grounding.total} verified in source</span>`;
+        return sealBadge(`All ${grounding.total} verified in source`);
     }
-    return `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 whitespace-nowrap">${grounding.grounded} of ${grounding.total} verified · ${grounding.dropped} rejected</span>`;
+    return `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#B45309]/10 text-[#B45309] whitespace-nowrap">${grounding.grounded} of ${grounding.total} verified · ${grounding.dropped} rejected</span>`;
 }
 
 function renderLgdBreakdownText(analysisObj) {
@@ -131,10 +131,10 @@ function displayMoney(amount) {
 
 function riskLevelClasses(level) {
     const normalized = String(level || '').toLowerCase();
-    if (normalized === 'high') return 'text-red-600 dark:text-red-400';
-    if (normalized === 'medium') return 'text-amber-600 dark:text-amber-400';
-    if (normalized === 'low') return 'text-emerald-600 dark:text-emerald-400';
-    return 'text-slate-500 dark:text-slate-400';
+    if (normalized === 'high') return 'text-[#B3362B]';
+    if (normalized === 'medium') return 'text-[#B45309]';
+    if (normalized === 'low') return 'text-[#1E7F5C]';
+    return 'text-muted';
 }
 
 // → { text, cls } for a complianceScore that may be a real 0-100 number or
@@ -143,12 +143,32 @@ function riskLevelClasses(level) {
 function complianceDisplay(analysis) {
     const score = Number(analysis?.complianceScore);
     if (!Number.isFinite(score)) {
-        return { text: 'Not determined', cls: 'text-slate-500 dark:text-slate-400' };
+        return { text: 'Not determined', cls: 'text-muted' };
     }
     const cls = score >= 70
-        ? 'text-emerald-600 dark:text-emerald-400'
-        : (score >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400');
+        ? 'text-[#1E7F5C]'
+        : (score >= 40 ? 'text-[#B45309]' : 'text-[#B3362B]');
     return { text: `${score}%`, cls };
+}
+
+// Phase 6: the one card recipe used across every view — a formal, quiet
+// surface with a hairline border. `extra` appends layout classes (padding,
+// gap, border accents) without duplicating the base recipe everywhere.
+function card(inner, extra = '') {
+    return `<div class="bg-surface border border-line rounded-lg shadow-sm ${extra}">${inner}</div>`;
+}
+
+// 11px uppercase letterspaced label used above every data point (stat
+// figures, section headers within cards) — keeps the "ledger" register consistent.
+function sectionLabel(text) {
+    return `<p class="text-[11px] font-semibold uppercase tracking-wider text-muted">${escapeHtml(text)}</p>`;
+}
+
+// The grounding seal — apply ONLY where the backend actually verified
+// something (verifyMonetaryItems totals, verifyQuote citations, passing
+// compliance checks). Everything else stays unsealed so this reads as real.
+function sealBadge(text = 'Verified') {
+    return `<span class="seal"><span class="material-symbols-outlined">verified</span>${escapeHtml(text)}</span>`;
 }
 
 async function loadExtractedText() {
@@ -264,8 +284,8 @@ async function revealCitation(msgIndex, citIndex) {
 function renderExtractedTextPanel() {
     const hasText = Boolean(state.extractedText);
     const description = state.extractedTextError
-        ? `<p class="text-xs text-red-600">${escapeHtml(state.extractedTextError)}</p>`
-        : `<p class="text-xs text-slate-500">Use the extracted text to verify numeric figures and clause references.</p>`;
+        ? `<p class="text-xs text-[#B3362B]">${escapeHtml(state.extractedTextError)}</p>`
+        : `<p class="text-xs text-muted">Use the extracted text to verify numeric figures and clause references.</p>`;
 
     let bodyHtml;
     if (!hasText) {
@@ -276,7 +296,7 @@ function renderExtractedTextPanel() {
             const before = state.extractedText.slice(0, offset.start);
             const match = state.extractedText.slice(offset.start, offset.end);
             const after = state.extractedText.slice(offset.end);
-            bodyHtml = `${escapeHtml(before)}<mark id="citation-highlight" class="bg-amber-200 dark:bg-amber-700/60 rounded px-0.5">${escapeHtml(match)}</mark>${escapeHtml(after)}`;
+            bodyHtml = `${escapeHtml(before)}<mark id="citation-highlight" class="bg-brass/25 text-ink rounded px-0.5">${escapeHtml(match)}</mark>${escapeHtml(after)}`;
         } else {
             bodyHtml = escapeHtml(state.extractedText);
         }
@@ -284,9 +304,9 @@ function renderExtractedTextPanel() {
 
     return `
         <div class="w-full mt-6">
-            <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-                <div class="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800">
-                    <h4 class="text-xs font-bold uppercase text-slate-400 tracking-widest">Extracted Text</h4>
+            ${card(`
+                <div class="flex items-center justify-between px-4 py-3 border-b border-line">
+                    ${sectionLabel('Extracted Text')}
                     <button class="text-xs font-semibold text-primary hover:underline" onclick="toggleExtractedText()">
                         ${state.showExtractedText ? 'Hide' : 'Show'}
                     </button>
@@ -295,18 +315,18 @@ function renderExtractedTextPanel() {
                     ${description}
                 </div>
                 ${state.showExtractedText ? `
-                    <div class="border-t border-slate-200 dark:border-slate-800">
+                    <div class="border-t border-line">
                         ${state.isExtractedTextLoading ? `
                             <div class="p-4 flex items-center gap-3">
                                 <div class="loading-spinner"></div>
-                                <span class="text-xs text-slate-500">Loading extracted text...</span>
+                                <span class="text-xs text-muted">Loading extracted text...</span>
                             </div>
                         ` : `
-                            <pre class="p-4 text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap max-h-[320px] overflow-y-auto custom-scrollbar">${bodyHtml}</pre>
+                            <pre class="p-4 text-xs text-ink whitespace-pre-wrap max-h-[320px] overflow-y-auto custom-scrollbar">${bodyHtml}</pre>
                         `}
                     </div>
                 ` : ''}
-            </div>
+            `, 'overflow-hidden')}
         </div>
     `;
 }
@@ -551,21 +571,22 @@ function renderHeader() {
     };
 
     return `
-        <header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-[#e7edf3] dark:border-slate-800 px-10 py-3 bg-white dark:bg-[#1a242f] sticky top-0 z-50">
-            <div class="flex items-center gap-8">
-                <div class="flex items-center gap-4 text-primary cursor-pointer" onclick="navigateTo('upload')">
-                    <div class="size-6">
+        <header class="flex items-center justify-between whitespace-nowrap border-b border-line px-10 py-3 bg-surface sticky top-0 z-50">
+            <div class="flex items-center gap-10">
+                <div class="flex items-center gap-3 text-primary cursor-pointer" onclick="navigateTo('upload')">
+                    <div class="size-6 text-brass">
                         <svg fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
                             <path d="M24 45.8096C19.6865 45.8096 15.4698 44.5305 11.8832 42.134C8.29667 39.7376 5.50128 36.3314 3.85056 32.3462C2.19985 28.361 1.76794 23.9758 2.60947 19.7452C3.451 15.5145 5.52816 11.6284 8.57829 8.5783C11.6284 5.52817 15.5145 3.45101 19.7452 2.60948C23.9758 1.76795 28.361 2.19986 32.3462 3.85057C36.3314 5.50129 39.7376 8.29668 42.134 11.8833C44.5305 15.4698 45.8096 19.6865 45.8096 24L24 24L24 45.8096Z" fill="currentColor"></path>
                         </svg>
                     </div>
-                    <h2 class="text-[#0d141b] dark:text-slate-50 text-xl font-bold leading-tight tracking-[-0.015em]">Contract Analysis</h2>
+                    <h2 class="font-display text-ink text-xl font-bold leading-tight tracking-[-0.01em]">Contract Analysis</h2>
                 </div>
                 <!-- Generated Nav Links -->
-                <nav class="hidden md:flex gap-6">
+                <nav class="hidden md:flex gap-7">
                     ${Object.entries(navLinks).map(([key, link]) => `
-                        <a onclick="navigateTo('${key}')" class="text-sm font-medium ${link.active ? 'text-primary' : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'} cursor-pointer transition-colors">
+                        <a onclick="navigateTo('${key}')" class="relative pb-[18px] -mb-[15px] text-sm font-medium ${link.active ? 'text-ink' : 'text-muted hover:text-ink'} cursor-pointer transition-colors">
                             ${link.text}
+                            ${link.active ? '<span class="absolute left-0 right-0 bottom-0 h-[2px] bg-brass"></span>' : ''}
                         </a>
                     `).join('')}
                 </nav>
@@ -573,9 +594,9 @@ function renderHeader() {
             <div class="flex flex-1 justify-end gap-8">
                 <div class="flex items-center gap-4">
                     ${state.currentContract ? `
-                        <div class="flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-lg">
+                        <div class="flex items-center gap-2 px-3 py-1.5 bg-paper border border-line rounded-full">
                             <span class="material-symbols-outlined text-primary text-sm">description</span>
-                            <span class="text-sm font-medium text-primary truncate max-w-[200px]">${state.currentContract.name}</span>
+                            <span class="text-sm font-medium text-ink truncate max-w-[200px]">${state.currentContract.name}</span>
                         </div>
                     ` : ''}
                 </div>
@@ -590,8 +611,8 @@ function renderUploadView() {
             <div class="layout-content-container flex flex-col max-w-[840px] flex-1 gap-8">
                 <!-- Page Heading -->
                 <div class="flex flex-col gap-3 text-center md:text-left">
-                    <h1 class="text-[#0d141b] dark:text-slate-50 text-4xl md:text-5xl font-black leading-tight tracking-[-0.033em]">Contract Analysis</h1>
-                    <p class="text-[#4c739a] dark:text-slate-400 text-lg font-normal leading-normal max-w-2xl">
+                    <h1 class="font-display text-ink text-4xl md:text-5xl font-bold leading-tight tracking-[-0.01em]">Contract Analysis</h1>
+                    <p class="text-muted text-lg font-normal leading-normal max-w-2xl">
                         Upload a contract to generate analysis across Investor, Legal, PM, Partner, and HR perspectives.
                     </p>
                 </div>
@@ -599,21 +620,21 @@ function renderUploadView() {
                 <!-- Enhanced Dropzone -->
                 <div class="flex flex-col">
                     <input type="file" id="fileInput" accept=".pdf,.docx,.doc,.txt" style="display: none;">
-                    <div id="dropzone" class="flex flex-col items-center gap-6 rounded-xl border-2 border-dashed border-[#cfdbe7] dark:border-slate-700 bg-white dark:bg-[#1a242f] px-6 py-16 hover:border-primary transition-colors cursor-pointer group" data-file-upload>
+                    <div id="dropzone" class="flex flex-col items-center gap-6 rounded-lg border border-line bg-surface px-6 py-16 hover:border-primary transition-colors cursor-pointer group" data-file-upload>
                         <div class="flex flex-col items-center gap-4">
-                            <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                            <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary transition-transform">
                                 <span class="material-symbols-outlined text-4xl">cloud_upload</span>
                             </div>
                             <div class="flex max-w-[480px] flex-col items-center gap-2">
-                                <p class="text-[#0d141b] dark:text-slate-50 text-xl font-bold leading-tight tracking-[-0.015em] text-center">Drag and drop your contract here</p>
-                                <p class="text-[#4c739a] dark:text-slate-400 text-sm font-normal leading-normal text-center">Supports PDF, DOCX, DOC, and TXT (Max 50MB per file)</p>
+                                <p class="font-display text-ink text-xl font-semibold leading-tight text-center">Drag and drop your contract here</p>
+                                <p class="text-muted text-sm font-normal leading-normal text-center">Supports PDF, DOCX, DOC, and TXT (Max 50MB per file)</p>
                             </div>
                         </div>
                         <div class="flex gap-3">
-                            <button class="flex min-w-[120px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-11 px-5 bg-primary text-white text-sm font-bold leading-normal tracking-[0.015em] hover:bg-primary/90 transition-all shadow-lg shadow-primary/20" data-file-upload>
+                            <button class="flex min-w-[120px] cursor-pointer items-center justify-center overflow-hidden rounded h-11 px-5 bg-primary text-white text-sm font-bold leading-normal tracking-[0.015em] hover:bg-primary/90 transition-all shadow-sm" data-file-upload>
                                 <span class="truncate">Upload File</span>
                             </button>
-                            <button class="flex min-w-[120px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-11 px-5 bg-[#e7edf3] dark:bg-slate-800 text-[#0d141b] dark:text-slate-50 text-sm font-bold leading-normal tracking-[0.015em] hover:bg-[#d1dae5] dark:hover:bg-slate-700 transition-all" data-file-upload>
+                            <button class="flex min-w-[120px] cursor-pointer items-center justify-center overflow-hidden rounded h-11 px-5 bg-transparent border border-line text-ink text-sm font-bold leading-normal tracking-[0.015em] hover:bg-paper transition-all" data-file-upload>
                                 <span class="truncate">Browse Local</span>
                             </button>
                         </div>
@@ -623,10 +644,10 @@ function renderUploadView() {
                 <!-- Recent Files List -->
                 <div class="flex flex-col gap-4 mt-4">
                     <div class="flex justify-between items-center px-1">
-                        <h3 class="text-[#0d141b] dark:text-slate-50 text-lg font-bold">Recent Documents</h3>
+                        ${sectionLabel('Recent Documents')}
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        ${state.contracts.length === 0 ? '<p class="text-[#4c739a] dark:text-slate-500 text-sm">No documents uploaded yet.</p>' : state.contracts.map(contract => renderRecentFileCard(contract)).join('')}
+                        ${state.contracts.length === 0 ? '<p class="text-muted text-sm">No documents uploaded yet.</p>' : state.contracts.map(contract => renderRecentFileCard(contract)).join('')}
                     </div>
                 </div>
             </div>
@@ -637,19 +658,18 @@ function renderUploadView() {
 function renderRecentFileCard(contract) {
     const isPDF = contract.fileName.toLowerCase().endsWith('.pdf');
     const iconClass = isPDF ? 'picture_as_pdf' : 'description';
-    const bgClass = isPDF ? 'bg-red-100 dark:bg-red-900/30 text-red-600' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-600';
 
-    return `
-        <div class="flex items-center gap-4 p-4 rounded-xl bg-white dark:bg-[#1a242f] border border-[#e7edf3] dark:border-slate-800 hover:shadow-md transition-shadow cursor-pointer" onclick="openContract('${contract.id}')">
-            <div class="size-10 flex items-center justify-center ${bgClass} rounded-lg">
+    return card(`
+        <div class="flex items-center gap-4 p-4 cursor-pointer" onclick="openContract('${contract.id}')">
+            <div class="size-10 flex items-center justify-center bg-paper text-primary rounded-lg">
                 <span class="material-symbols-outlined">${iconClass}</span>
             </div>
             <div class="flex flex-col flex-1 min-w-0">
-                <p class="text-sm font-bold text-[#0d141b] dark:text-slate-50 truncate">${contract.name}</p>
-                <p class="text-xs text-[#4c739a] dark:text-slate-400">${formatDate(contract.uploadDate)} • ${formatFileSize(contract.fileSize)}</p>
+                <p class="text-sm font-bold text-ink truncate">${contract.name}</p>
+                <p class="text-xs text-muted">${formatDate(contract.uploadDate)} • ${formatFileSize(contract.fileSize)}</p>
             </div>
         </div>
-    `;
+    `, 'hover:shadow-md transition-shadow');
 }
 
 function renderInvestorView() {
@@ -669,65 +689,68 @@ function renderInvestorView() {
         : (Array.isArray(investorAnalysis.riskFactors) ? investorAnalysis.riskFactors : []);
 
     return `
-        <main class="flex-1 flex flex-col max-w-[1800px] overflow-hidden mx-auto w-full px-4 sm:px-10 py-6 gap-6">
-            <div class="flex flex-col gap-1 shrink-0">
-                <div class="flex items-center gap-2 text-sm text-[#4c739a]">
+        <main class="flex-1 flex flex-col max-w-[1800px] overflow-hidden mx-auto w-full px-4 sm:px-10 py-3 gap-3">
+            <div class="flex flex-col shrink-0">
+                <div class="flex items-center gap-2 text-xs text-muted">
                     <a class="hover:text-primary cursor-pointer" onclick="navigateTo('upload')">Investor View</a>
                     <span>/</span>
                     <a class="hover:text-primary cursor-pointer" onclick="navigateTo('upload')">Contract Analysis</a>
                     <span>/</span>
-                    <span class="text-[#0d141b] dark:text-white font-medium">${state.currentContract.name}</span>
+                    <span class="text-ink font-medium">${state.currentContract.name}</span>
                 </div>
-                <div class="flex flex-wrap justify-between items-end gap-4 mt-2">
-                    <div class="flex flex-col gap-1">
-                        <h1 class="text-3xl font-black tracking-tight text-[#0d141b] dark:text-white">${state.currentContract.name}</h1>
-                        <p class="text-[#4c739a] text-sm">Last updated ${formatDate(state.currentContract.uploadDate)}</p>
-                    </div>
+                <div class="flex flex-wrap items-baseline gap-2">
+                    <h1 class="font-display text-xl font-bold tracking-[-0.01em] text-ink">${state.currentContract.name}</h1>
+                    <p class="text-muted text-xs">— Last updated ${formatDate(state.currentContract.uploadDate)}</p>
                 </div>
             </div>
 
             <!-- Stats Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-900 border border-[#cfdbe7] dark:border-slate-800 shadow-sm border-l-4 border-l-red-500">
-                    <p class="text-[#4c739a] text-xs font-semibold uppercase tracking-wider">Total Financial Exposure</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 shrink-0">
+                ${card(`
+                <div class="flex flex-col gap-0.5 px-4 py-2.5 border-l-4 border-l-[#B3362B]">
+                    ${sectionLabel('Total Financial Exposure')}
                     <div class="flex items-baseline gap-2">
-                        <p class="text-[#0d141b] dark:text-white text-3xl font-bold">${displayField(investorAnalysis.financialExposure)}</p>
+                        <p class="text-ink text-xl font-bold figures">${displayField(investorAnalysis.financialExposure)}</p>
+                        ${(investorAnalysis.calculations?.exposure?.items?.length || 0) > 0 ? sealBadge('Verified') : ''}
                     </div>
-                    <p class="text-[#4c739a] text-xs">${(investorAnalysis.calculations?.exposure?.items?.length || 0) > 0 ? `Sum of ${investorAnalysis.calculations.exposure.items.length} amount(s) verified in contract text` : 'No verified risk amounts found in contract text'}</p>
-                    ${investorAnalysis.riskExplanation ? `<p class="text-[10px] text-slate-400 italic">AI commentary (unverified): ${escapeHtml(investorAnalysis.riskExplanation)}</p>` : ''}
+                    <p class="text-muted text-[11px] line-clamp-1">${(investorAnalysis.calculations?.exposure?.items?.length || 0) > 0 ? `Sum of ${investorAnalysis.calculations.exposure.items.length} amount(s) verified in contract text` : 'No verified risk amounts found in contract text'}</p>
                 </div>
-                <div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-900 border border-[#cfdbe7] dark:border-slate-800 shadow-sm">
-                    <p class="text-[#4c739a] text-xs font-semibold uppercase tracking-wider">Loss Given Default (LGD)</p>
+                `)}
+                ${card(`
+                <div class="flex flex-col gap-0.5 px-4 py-2.5">
+                    ${sectionLabel('Loss Given Default (LGD)')}
                     <div class="flex items-baseline gap-2">
-                        <p class="text-[#0d141b] dark:text-white text-3xl font-bold">${lgdScore !== null ? `${lgdScore}%` : 'Not computable'}</p>
+                        <p class="text-ink text-xl font-bold figures">${lgdScore !== null ? `${lgdScore}%` : 'Not computable'}</p>
                     </div>
                     ${lgdScore !== null ? `
-                        <div class="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full mt-1">
+                        <div class="w-full bg-line h-1.5 rounded-full">
                             <div class="bg-primary h-full rounded-full" style="width: ${lgdScore}%"></div>
                         </div>
                     ` : ''}
-                    ${renderLgdBreakdownText(investorAnalysis) ? `<p class="text-[10px] text-[#4c739a] mt-1">${renderLgdBreakdownText(investorAnalysis)}</p>` : ''}
-                    ${investorAnalysis.llmComments ? `<p class="text-[10px] text-amber-600 dark:text-amber-400 mt-2 font-medium italic">${escapeHtml(investorAnalysis.llmComments)}</p>` : ''}
+                    ${renderLgdBreakdownText(investorAnalysis) ? `<p class="text-muted text-[11px] figures line-clamp-1">${renderLgdBreakdownText(investorAnalysis)}</p>` : ''}
                 </div>
-                <div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-900 border border-[#cfdbe7] dark:border-slate-800 shadow-sm">
-                    <p class="text-[#4c739a] text-xs font-semibold uppercase tracking-wider">Ambiguous Clauses</p>
+                `)}
+                ${card(`
+                <div class="flex flex-col gap-0.5 px-4 py-2.5">
+                    ${sectionLabel('Ambiguous Clauses')}
                     <div class="flex items-baseline gap-2">
-                        <p class="text-[#0d141b] dark:text-white text-3xl font-bold">${flaggedClauses}</p>
+                        <p class="text-ink text-xl font-bold figures">${flaggedClauses}</p>
                     </div>
-                    <p class="text-[#4c739a] text-xs">${totalClauses !== null ? `Flagged out of ${totalClauses} ${investorAnalysis.clauseCountLevel === 'section' ? 'sections' : 'clauses'}` : 'Clause count not determined'}</p>
+                    <p class="text-muted text-[11px] line-clamp-1">${totalClauses !== null ? `Flagged out of ${totalClauses} ${investorAnalysis.clauseCountLevel === 'section' ? 'sections' : 'clauses'}` : 'Clause count not determined'}</p>
                 </div>
+                `)}
             </div>
 
-            <div class="flex-1 flex gap-6 min-h-[600px] overflow-hidden">
+            <div class="flex-1 min-h-0 flex gap-6 overflow-hidden">
                 <!-- Document Viewer -->
-                <div class="flex-[3] flex flex-col bg-white dark:bg-slate-900 rounded-xl border border-[#cfdbe7] dark:border-slate-800 shadow-sm overflow-hidden">
-                    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
+                <div class="flex-[3] flex flex-col min-h-0 bg-surface rounded-lg border border-line shadow-sm overflow-hidden">
+                    <div class="flex items-center justify-between px-6 py-4 border-b border-line">
                         <div class="flex items-center gap-4">
-                            <span class="text-sm font-bold">${state.currentContract.name}.pdf</span>
+                            <span class="text-sm font-bold text-ink">${state.currentContract.name}.pdf</span>
                         </div>
                     </div>
-                    <div class="flex-1 overflow-y-auto p-12 custom-scrollbar bg-slate-50 dark:bg-slate-950/50">
-                        <div class="max-w-3xl mx-auto bg-white dark:bg-slate-900 shadow-2xl p-16 min-h-full prose dark:prose-invert">
+                    <div class="flex-1 min-h-0 overflow-y-auto p-12 custom-scrollbar bg-paper">
+                        <div class="max-w-3xl mx-auto bg-surface shadow-sm p-16 min-h-full prose document-paper">
                             <iframe src="/api/contracts/${state.currentContract.id}/file" class="w-full h-full border-0 min-h-[800px]"></iframe>
                         </div>
                         ${renderExtractedTextPanel()}
@@ -735,22 +758,22 @@ function renderInvestorView() {
                 </div>
 
                 <!-- Risk Analysis Sidebar -->
-                <div class="flex-[2] flex flex-col gap-4 overflow-hidden min-w-[350px]">
-                    <div class="bg-white dark:bg-slate-900 rounded-xl border border-[#cfdbe7] dark:border-slate-800 overflow-hidden shrink-0">
-                        <div class="flex border-b border-slate-100 dark:border-slate-800">
-                            <button class="flex-1 py-3 text-sm font-bold border-b-2 ${state.investorTab === 'insights' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-primary'}" onclick="switchInvestorTab('insights')">Investor Insights</button>
-                            <button class="flex-1 py-3 text-sm font-bold border-b-2 ${state.investorTab === 'financial' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-primary'}" onclick="switchInvestorTab('financial')">Financial Exposure</button>
+                <div class="flex-[2] flex flex-col gap-4 overflow-hidden min-h-0 min-w-[350px]">
+                    <div class="bg-surface rounded-lg border border-line overflow-hidden shrink-0">
+                        <div class="flex border-b border-line">
+                            <button class="flex-1 py-3 text-sm font-bold border-b-2 ${state.investorTab === 'insights' ? 'border-brass text-primary' : 'border-transparent text-muted hover:text-primary'}" onclick="switchInvestorTab('insights')">Investor Insights</button>
+                            <button class="flex-1 py-3 text-sm font-bold border-b-2 ${state.investorTab === 'financial' ? 'border-brass text-primary' : 'border-transparent text-muted hover:text-primary'}" onclick="switchInvestorTab('financial')">Financial Exposure</button>
                         </div>
                         ${state.investorTab === 'insights' ? `
                             <div class="p-4 flex gap-2 overflow-x-auto no-scrollbar">
                                 ${clauseItems.length > 0 ? clauseItems.map(item => `
-                                    <span class="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-semibold rounded-full whitespace-nowrap">${escapeHtml(item.title)}</span>
-                                `).join('') : '<p class="text-xs text-slate-400 italic">No verified risk items for this contract.</p>'}
+                                    <span class="px-3 py-1 bg-paper border border-line text-ink text-xs font-semibold rounded-full whitespace-nowrap">${escapeHtml(item.title)}</span>
+                                `).join('') : '<p class="text-xs text-muted italic">No verified risk items for this contract.</p>'}
                             </div>
                         ` : `
                             <div class="p-4 max-h-[400px] overflow-y-auto custom-scrollbar">
                                 <div class="flex items-center justify-between gap-2 mb-3">
-                                    <h4 class="text-xs font-bold uppercase text-slate-400 tracking-widest">Financial Breakdown</h4>
+                                    ${sectionLabel('Financial Breakdown')}
                                     ${renderGroundingBadge(analysis)}
                                 </div>
                                 <div class="space-y-4">
@@ -760,20 +783,20 @@ function renderInvestorView() {
                                             <div class="space-y-2">
                                                 ${analysis.numericFigures.risks.map((r, idx) => `
                                                     <div class="flex flex-col gap-1">
-                                                        <div class="flex justify-between items-start p-2 bg-red-50 dark:bg-red-950/20 rounded border border-red-100 dark:border-red-900/30">
+                                                        <div class="flex justify-between items-start p-2 bg-red-50 rounded border border-red-100">
                                                             <div class="min-w-0 pr-2">
-                                                                <p class="text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate">
+                                                                <p class="text-[11px] font-bold text-slate-900 truncate">
                                                                     ${escapeHtml(r.raw)}
-                                                                    ${r.possibleDuplicate ? '<span class="ml-1 px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] font-bold align-middle whitespace-nowrap">possible duplicate</span>' : ''}
+                                                                    ${r.possibleDuplicate ? '<span class="ml-1 px-1 py-0.5 rounded bg-amber-100 text-amber-700 text-[9px] font-bold align-middle whitespace-nowrap">possible duplicate</span>' : ''}
                                                                 </p>
                                                                 <p class="text-[10px] text-slate-500 line-clamp-1">${escapeHtml(r.reason || '')}</p>
                                                             </div>
                                                             <div class="flex items-center gap-1 shrink-0">
-                                                                <span class="text-[11px] font-black text-red-600 whitespace-nowrap">${displayMoney(Number(r.amount))}</span>
+                                                                <span class="text-[11px] font-black text-[#B3362B] whitespace-nowrap figures">${displayMoney(Number(r.amount))}</span>
                                                                 ${r.sourceContext ? `<button class="text-slate-400 hover:text-primary" title="Show source" onclick="toggleSourceRow('risk-${idx}')"><span class="material-symbols-outlined text-[14px]">visibility</span></button>` : ''}
                                                             </div>
                                                         </div>
-                                                        ${r.sourceContext ? `<div id="src-risk-${idx}" class="hidden px-2 py-1.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded text-[10px] text-slate-500 dark:text-slate-400 italic">"${escapeHtml(r.sourceContext)}"</div>` : ''}
+                                                        ${r.sourceContext ? `<div id="src-risk-${idx}" class="hidden px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-500 italic">"${escapeHtml(r.sourceContext)}"</div>` : ''}
                                                     </div>
                                                 `).join('')}
                                             </div>
@@ -786,20 +809,20 @@ function renderInvestorView() {
                                             <div class="space-y-2">
                                                 ${analysis.numericFigures.obligations.map((o, idx) => `
                                                     <div class="flex flex-col gap-1">
-                                                        <div class="flex justify-between items-start p-2 bg-slate-50 dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-700">
+                                                        <div class="flex justify-between items-start p-2 bg-slate-50 rounded border border-slate-100">
                                                             <div class="min-w-0 pr-2">
-                                                                <p class="text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate">
+                                                                <p class="text-[11px] font-bold text-slate-900 truncate">
                                                                     ${escapeHtml(o.raw)}
-                                                                    ${o.possibleDuplicate ? '<span class="ml-1 px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] font-bold align-middle whitespace-nowrap">possible duplicate</span>' : ''}
+                                                                    ${o.possibleDuplicate ? '<span class="ml-1 px-1 py-0.5 rounded bg-amber-100 text-amber-700 text-[9px] font-bold align-middle whitespace-nowrap">possible duplicate</span>' : ''}
                                                                 </p>
                                                                 <p class="text-[10px] text-slate-500 line-clamp-1">${escapeHtml(o.reason || '')}</p>
                                                             </div>
                                                             <div class="flex items-center gap-1 shrink-0">
-                                                                <span class="text-[11px] font-black text-primary whitespace-nowrap">${displayMoney(Number(o.amount))}</span>
+                                                                <span class="text-[11px] font-black text-primary whitespace-nowrap figures">${displayMoney(Number(o.amount))}</span>
                                                                 ${o.sourceContext ? `<button class="text-slate-400 hover:text-primary" title="Show source" onclick="toggleSourceRow('obligation-${idx}')"><span class="material-symbols-outlined text-[14px]">visibility</span></button>` : ''}
                                                             </div>
                                                         </div>
-                                                        ${o.sourceContext ? `<div id="src-obligation-${idx}" class="hidden px-2 py-1.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded text-[10px] text-slate-500 dark:text-slate-400 italic">"${escapeHtml(o.sourceContext)}"</div>` : ''}
+                                                        ${o.sourceContext ? `<div id="src-obligation-${idx}" class="hidden px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-500 italic">"${escapeHtml(o.sourceContext)}"</div>` : ''}
                                                     </div>
                                                 `).join('')}
                                             </div>
@@ -812,17 +835,17 @@ function renderInvestorView() {
                                             <div class="space-y-2">
                                                 ${analysis.numericFigures.rates.map((r, idx) => `
                                                     <div class="flex flex-col gap-1">
-                                                        <div class="flex justify-between items-start p-2 bg-slate-50 dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-700">
+                                                        <div class="flex justify-between items-start p-2 bg-slate-50 rounded border border-slate-100">
                                                             <div class="min-w-0 pr-2">
-                                                                <p class="text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate">${escapeHtml(r.raw)}</p>
+                                                                <p class="text-[11px] font-bold text-slate-900 truncate">${escapeHtml(r.raw)}</p>
                                                                 <p class="text-[10px] text-slate-500 line-clamp-1">${escapeHtml(r.reason || '')}</p>
                                                             </div>
                                                             <div class="flex items-center gap-1 shrink-0">
-                                                                <span class="text-[11px] font-black text-slate-500 whitespace-nowrap">${displayMoney(Number(r.amount))}</span>
+                                                                <span class="text-[11px] font-black text-muted whitespace-nowrap figures">${displayMoney(Number(r.amount))}</span>
                                                                 ${r.sourceContext ? `<button class="text-slate-400 hover:text-primary" title="Show source" onclick="toggleSourceRow('rate-${idx}')"><span class="material-symbols-outlined text-[14px]">visibility</span></button>` : ''}
                                                             </div>
                                                         </div>
-                                                        ${r.sourceContext ? `<div id="src-rate-${idx}" class="hidden px-2 py-1.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded text-[10px] text-slate-500 dark:text-slate-400 italic">"${escapeHtml(r.sourceContext)}"</div>` : ''}
+                                                        ${r.sourceContext ? `<div id="src-rate-${idx}" class="hidden px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-500 italic">"${escapeHtml(r.sourceContext)}"</div>` : ''}
                                                     </div>
                                                 `).join('')}
                                             </div>
@@ -835,63 +858,65 @@ function renderInvestorView() {
                                             <div class="space-y-2">
                                                 ${analysis.numericFigures.insuranceRequirements.map((r, idx) => `
                                                     <div class="flex flex-col gap-1">
-                                                        <div class="flex justify-between items-start p-2 bg-slate-50 dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-700">
+                                                        <div class="flex justify-between items-start p-2 bg-slate-50 rounded border border-slate-100">
                                                             <div class="min-w-0 pr-2">
-                                                                <p class="text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate">${escapeHtml(r.raw)}</p>
+                                                                <p class="text-[11px] font-bold text-slate-900 truncate">${escapeHtml(r.raw)}</p>
                                                                 <p class="text-[10px] text-slate-500 line-clamp-1">${escapeHtml(r.reason || '')}</p>
                                                             </div>
                                                             <div class="flex items-center gap-1 shrink-0">
-                                                                <span class="text-[11px] font-black text-slate-500 whitespace-nowrap">${displayMoney(Number(r.amount))}</span>
+                                                                <span class="text-[11px] font-black text-muted whitespace-nowrap figures">${displayMoney(Number(r.amount))}</span>
                                                                 ${r.sourceContext ? `<button class="text-slate-400 hover:text-primary" title="Show source" onclick="toggleSourceRow('insurance-${idx}')"><span class="material-symbols-outlined text-[14px]">visibility</span></button>` : ''}
                                                             </div>
                                                         </div>
-                                                        ${r.sourceContext ? `<div id="src-insurance-${idx}" class="hidden px-2 py-1.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded text-[10px] text-slate-500 dark:text-slate-400 italic">"${escapeHtml(r.sourceContext)}"</div>` : ''}
+                                                        ${r.sourceContext ? `<div id="src-insurance-${idx}" class="hidden px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-500 italic">"${escapeHtml(r.sourceContext)}"</div>` : ''}
                                                     </div>
                                                 `).join('')}
                                             </div>
                                         </div>
                                     ` : ''}
 
-                                    <div class="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-2">
+                                    <div class="pt-3 border-t border-line space-y-2">
                                         <div class="flex justify-between items-center">
-                                            <span class="text-xs font-bold text-slate-500">Total Potential Loss</span>
-                                            <span class="text-sm font-black text-red-600">${displayMoney(analysis.numericFigures.totalPotentialLoss)}</span>
+                                            <span class="text-xs font-bold text-muted">Total Potential Loss</span>
+                                            <span class="text-sm font-black text-[#B3362B] figures">${displayMoney(analysis.numericFigures.totalPotentialLoss)}</span>
                                         </div>
                                         <div class="flex justify-between items-center">
-                                            <span class="text-xs font-bold text-slate-500">Total Amount Owed</span>
-                                            <span class="text-sm font-black text-primary">${displayMoney(analysis.numericFigures.totalAmountOwed)}</span>
+                                            <span class="text-xs font-bold text-muted">Total Amount Owed</span>
+                                            <span class="text-sm font-black text-primary figures">${displayMoney(analysis.numericFigures.totalAmountOwed)}</span>
                                         </div>
-                                        <div class="flex justify-between items-center p-2 bg-slate-900 dark:bg-white rounded-lg">
-                                            <span class="text-xs font-bold text-slate-300 dark:text-slate-600">LGD Percentage</span>
-                                            <span class="text-sm font-black text-white dark:text-slate-900">${Number.isFinite(analysis.lgdScore) ? `${analysis.lgdScore}%` : 'Not computable'}</span>
+                                        <div class="flex justify-between items-center p-2 bg-ink rounded-lg">
+                                            <span class="text-xs font-bold text-white/70">LGD Percentage</span>
+                                            <span class="text-sm font-black text-white figures">${Number.isFinite(analysis.lgdScore) ? `${analysis.lgdScore}%` : 'Not computable'}</span>
                                         </div>
-                                        ${renderLgdBreakdownText(analysis) ? `<p class="text-[10px] text-slate-400 text-right">${renderLgdBreakdownText(analysis)}</p>` : ''}
+                                        ${renderLgdBreakdownText(analysis) ? `<p class="text-[10px] text-muted text-right figures">${renderLgdBreakdownText(analysis)}</p>` : ''}
                                     </div>
                                 </div>
                             </div>
                         `}
                     </div>
-                    <div class="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-4 pb-4">
-                                                    ${clauseItems.length > 0 ? clauseItems.map(item => `
+                    <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar flex flex-col gap-4 pb-4">
+                        ${clauseItems.length > 0 ? clauseItems.map(item => `
                             <div class="flex flex-col gap-3">
-                                <h4 class="text-xs font-bold uppercase text-slate-400 tracking-widest px-1">Clause ${displayField(item.section, '—')}: Summary</h4>
-                                <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm border-l-4 border-l-primary hover:shadow-md transition-shadow">
+                                <h4 class="text-[11px] font-semibold uppercase tracking-wider text-muted px-1">Clause ${displayField(item.section, '—')}: Summary</h4>
+                                ${card(`
+                                <div class="p-4 border-l-4 border-l-primary">
                                     <div class="flex justify-between items-start mb-2">
-                                        <span class="text-xs font-bold text-slate-500 uppercase">Clause ${displayField(item.section, '—')}</span>
-                                        ${item.source === 'keyword-scan' ? '<span class="text-[9px] font-bold uppercase text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">keyword scan</span>' : ''}
-                                        ${item.financialImpact ? `<span class="text-xs font-semibold text-primary">Impact: ${escapeHtml(item.financialImpact)}</span>` : ''}
+                                        <span class="text-xs font-bold text-muted uppercase">Clause ${displayField(item.section, '—')}</span>
+                                        ${item.source === 'keyword-scan' ? '<span class="text-[9px] font-bold uppercase text-muted bg-paper px-1.5 py-0.5 rounded">keyword scan</span>' : ''}
+                                        ${item.financialImpact ? `<span class="text-xs font-semibold text-primary figures">Impact: ${escapeHtml(item.financialImpact)}</span>` : ''}
                                     </div>
-                                    <h5 class="text-sm font-bold mb-1">${escapeHtml(item.title)}</h5>
-                                    <p class="text-xs text-slate-600 dark:text-slate-400 mb-3">${escapeHtml(item.description)}</p>
+                                    <h5 class="text-sm font-bold text-ink mb-1">${escapeHtml(item.title)}</h5>
+                                    <p class="text-xs text-muted mb-3">${escapeHtml(item.description)}</p>
                                     ${item.financialImpact ? `
-                                        <div class="flex items-center gap-1 mt-auto pt-3 border-t border-slate-50 dark:border-slate-800">
+                                        <div class="flex items-center gap-1 mt-auto pt-3 border-t border-line">
                                             <span class="material-symbols-outlined text-xs text-primary">attach_money</span>
-                                            <span class="text-xs font-bold">${escapeHtml(item.financialImpact)}</span>
+                                            <span class="text-xs font-bold text-ink figures">${escapeHtml(item.financialImpact)}</span>
                                         </div>
                                     ` : ''}
                                 </div>
+                                `, 'hover:shadow-md transition-shadow')}
                             </div>
-                        `).join('') : '<p class="text-xs text-slate-400 italic px-1">No verified risk items for this contract.</p>'}
+                        `).join('') : '<p class="text-xs text-muted italic px-1">No verified risk items for this contract.</p>'}
                     </div>
                 </div>
             </div>
@@ -917,128 +942,132 @@ function renderPartnerView() {
     const compliancePassCount = complianceChecks.filter(check => check.status === 'pass').length;
 
     return `
-        <main class="flex-1 flex flex-col max-w-[1800px] overflow-hidden mx-auto w-full px-4 sm:px-10 py-6 gap-6">
-            <div class="flex flex-col gap-1 shrink-0">
-                <div class="flex items-center gap-2 text-sm text-[#4c739a]">
+        <main class="flex-1 flex flex-col max-w-[1800px] overflow-hidden mx-auto w-full px-4 sm:px-10 py-3 gap-3">
+            <div class="flex flex-col shrink-0">
+                <div class="flex items-center gap-2 text-xs text-muted">
                     <a class="hover:text-primary cursor-pointer" onclick="navigateTo('upload')">Partner View</a>
                     <span>/</span>
                     <a class="hover:text-primary cursor-pointer" onclick="navigateTo('upload')">Contract Overview</a>
                     <span>/</span>
-                    <span class="text-[#0d141b] dark:text-white font-medium">${state.currentContract.name}</span>
+                    <span class="text-ink font-medium">${state.currentContract.name}</span>
                 </div>
-                <div class="flex flex-wrap justify-between items-end gap-4 mt-2">
-                    <div class="flex flex-col gap-1">
-                        <h1 class="text-3xl font-black tracking-tight text-[#0d141b] dark:text-white">${state.currentContract.name}</h1>
-                        <p class="text-[#4c739a] text-sm">Overview of financial, legal, and operational signals</p>
-                    </div>
+                <div class="flex flex-wrap items-baseline gap-2">
+                    <h1 class="font-display text-xl font-bold tracking-[-0.01em] text-ink">${state.currentContract.name}</h1>
+                    <p class="text-muted text-xs">— Overview of financial, legal, and operational signals</p>
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-900 border border-[#cfdbe7] dark:border-slate-800 shadow-sm border-l-4 border-l-red-500">
-                    <p class="text-[#4c739a] text-xs font-semibold uppercase tracking-wider">Total Financial Exposure</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
+                ${card(`
+                <div class="flex flex-col gap-0.5 px-4 py-2.5 border-l-4 border-l-[#B3362B]">
+                    ${sectionLabel('Total Financial Exposure')}
                     <div class="flex items-baseline gap-2">
-                        <p class="text-[#0d141b] dark:text-white text-3xl font-bold">${displayField(analysis.financialExposure)}</p>
+                        <p class="text-ink text-xl font-bold figures">${displayField(analysis.financialExposure)}</p>
+                        ${(analysis.calculations?.exposure?.items?.length || 0) > 0 ? sealBadge('Verified') : ''}
                     </div>
-                    <p class="text-[#4c739a] text-xs">${(analysis.calculations?.exposure?.items?.length || 0) > 0 ? `Sum of ${analysis.calculations.exposure.items.length} amount(s) verified in contract text` : 'No verified risk amounts found in contract text'}</p>
-                    ${analysis.riskExplanation ? `<p class="text-[10px] text-slate-400 italic">AI commentary (unverified): ${escapeHtml(analysis.riskExplanation)}</p>` : ''}
+                    <p class="text-muted text-[11px] line-clamp-1">${(analysis.calculations?.exposure?.items?.length || 0) > 0 ? `Sum of ${analysis.calculations.exposure.items.length} amount(s) verified in contract text` : 'No verified risk amounts found in contract text'}</p>
                 </div>
-                <div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-900 border border-[#cfdbe7] dark:border-slate-800 shadow-sm">
-                    <p class="text-[#4c739a] text-xs font-semibold uppercase tracking-wider">Compliance Score</p>
+                `)}
+                ${card(`
+                <div class="flex flex-col gap-0.5 px-4 py-2.5">
+                    ${sectionLabel('Compliance Score')}
                     <div class="flex items-baseline gap-2">
-                        <p class="text-3xl font-bold ${compliance.cls}">${compliance.text}</p>
+                        <p class="text-xl font-bold figures ${compliance.cls}">${compliance.text}</p>
                     </div>
-                    <p class="text-[#4c739a] text-xs">${Array.isArray(analysis.complianceChecks) && analysis.complianceChecks.length > 0 ? `${analysis.complianceChecks.length} check(s) evaluated` : 'Not determined'}</p>
+                    <p class="text-muted text-[11px] line-clamp-1">${Array.isArray(analysis.complianceChecks) && analysis.complianceChecks.length > 0 ? `${analysis.complianceChecks.length} check(s) evaluated` : 'Not determined'}</p>
                 </div>
-                <div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-900 border border-[#cfdbe7] dark:border-slate-800 shadow-sm">
-                    <p class="text-[#4c739a] text-xs font-semibold uppercase tracking-wider">Loss Given Default (LGD)</p>
+                `)}
+                ${card(`
+                <div class="flex flex-col gap-0.5 px-4 py-2.5">
+                    ${sectionLabel('Loss Given Default (LGD)')}
                     <div class="flex items-baseline gap-2">
-                        <p class="text-[#0d141b] dark:text-white text-3xl font-bold">${lgdScore !== null ? `${lgdScore}%` : 'Not computable'}</p>
+                        <p class="text-ink text-xl font-bold figures">${lgdScore !== null ? `${lgdScore}%` : 'Not computable'}</p>
                     </div>
                     ${lgdScore !== null ? `
-                        <div class="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full mt-1">
+                        <div class="w-full bg-line h-1.5 rounded-full">
                             <div class="bg-primary h-full rounded-full" style="width: ${lgdScore}%"></div>
                         </div>
                     ` : ''}
-                    ${analysis.llmComments ? `<p class="text-[10px] text-amber-600 dark:text-amber-400 mt-2 font-medium italic">${escapeHtml(analysis.llmComments)}</p>` : ''}
                 </div>
-                <div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-900 border border-[#cfdbe7] dark:border-slate-800 shadow-sm">
-                    <p class="text-[#4c739a] text-xs font-semibold uppercase tracking-wider">Ambiguous Clauses</p>
+                `)}
+                ${card(`
+                <div class="flex flex-col gap-0.5 px-4 py-2.5">
+                    ${sectionLabel('Ambiguous Clauses')}
                     <div class="flex items-baseline gap-2">
-                        <p class="text-[#0d141b] dark:text-white text-3xl font-bold">${flaggedClauses}</p>
+                        <p class="text-ink text-xl font-bold figures">${flaggedClauses}</p>
                     </div>
-                    <p class="text-[#4c739a] text-xs">${totalClauses !== null ? `Flagged out of ${totalClauses} ${analysis.clauseCountLevel === 'section' ? 'sections' : 'clauses'}` : 'Clause count not determined'}</p>
+                    <p class="text-muted text-[11px] line-clamp-1">${totalClauses !== null ? `Flagged out of ${totalClauses} ${analysis.clauseCountLevel === 'section' ? 'sections' : 'clauses'}` : 'Clause count not determined'}</p>
                 </div>
+                `)}
             </div>
 
-            <div class="flex-1 flex gap-6 min-h-[600px] overflow-hidden">
-                <div class="flex-[3] flex flex-col bg-white dark:bg-slate-900 rounded-xl border border-[#cfdbe7] dark:border-slate-800 shadow-sm overflow-hidden">
-                    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
+            <div class="flex-1 min-h-0 flex gap-6 overflow-hidden">
+                <div class="flex-[3] flex flex-col min-h-0 bg-surface rounded-lg border border-line shadow-sm overflow-hidden">
+                    <div class="flex items-center justify-between px-6 py-4 border-b border-line">
                         <div class="flex items-center gap-4">
-                            <span class="text-sm font-bold">${state.currentContract.name}.pdf</span>
+                            <span class="text-sm font-bold text-ink">${state.currentContract.name}.pdf</span>
                         </div>
                     </div>
-                    <div class="flex-1 overflow-y-auto p-12 custom-scrollbar bg-slate-50 dark:bg-slate-950/50">
-                        <div class="max-w-3xl mx-auto bg-white dark:bg-slate-900 shadow-2xl p-16 min-h-full prose dark:prose-invert">
+                    <div class="flex-1 min-h-0 overflow-y-auto p-12 custom-scrollbar bg-paper">
+                        <div class="max-w-3xl mx-auto bg-surface shadow-sm p-16 min-h-full prose document-paper">
                             <iframe src="/api/contracts/${state.currentContract.id}/file" class="w-full h-full border-0 min-h-[800px]"></iframe>
                         </div>
                         ${renderExtractedTextPanel()}
                     </div>
                 </div>
 
-                <div class="flex-[2] flex flex-col gap-4 overflow-hidden min-w-[350px]">
-                    <div class="bg-white dark:bg-slate-900 rounded-xl border border-[#cfdbe7] dark:border-slate-800 overflow-hidden shrink-0">
-                        <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-                            <h4 class="text-xs font-bold uppercase text-slate-400 tracking-widest">Operational Snapshot</h4>
+                <div class="flex-[2] flex flex-col gap-4 overflow-hidden min-h-0 min-w-[350px]">
+                    <div class="bg-surface rounded-lg border border-line overflow-hidden shrink-0">
+                        <div class="px-4 py-3 border-b border-line">
+                            ${sectionLabel('Operational Snapshot')}
                         </div>
                         <div class="p-4 grid grid-cols-3 gap-3 text-center">
-                            <div class="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
-                                <p class="text-[10px] uppercase text-slate-400 font-bold">Deliverables</p>
-                                <p class="text-lg font-bold text-slate-900 dark:text-white">${deliverableCount}</p>
+                            <div class="bg-paper rounded-lg p-3">
+                                <p class="text-[10px] uppercase text-muted font-bold">Deliverables</p>
+                                <p class="text-lg font-bold text-ink figures">${deliverableCount}</p>
                             </div>
-                            <div class="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
-                                <p class="text-[10px] uppercase text-slate-400 font-bold">Action Items</p>
-                                <p class="text-lg font-bold text-slate-900 dark:text-white">${actionItemCount}</p>
+                            <div class="bg-paper rounded-lg p-3">
+                                <p class="text-[10px] uppercase text-muted font-bold">Action Items</p>
+                                <p class="text-lg font-bold text-ink figures">${actionItemCount}</p>
                             </div>
-                            <div class="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
-                                <p class="text-[10px] uppercase text-slate-400 font-bold">Milestones</p>
-                                <p class="text-lg font-bold text-slate-900 dark:text-white">${timelineCount}</p>
+                            <div class="bg-paper rounded-lg p-3">
+                                <p class="text-[10px] uppercase text-muted font-bold">Milestones</p>
+                                <p class="text-lg font-bold text-ink figures">${timelineCount}</p>
                             </div>
                         </div>
                     </div>
 
-                    <div class="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-4 pb-4">
+                    <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar flex flex-col gap-4 pb-4">
                         <div class="flex flex-col gap-3">
-                            <h4 class="text-xs font-bold uppercase text-slate-400 tracking-widest px-1">Clause Flags</h4>
-                            ${clauseFlags.length === 0 ? `
-                                <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-                                    <p class="text-xs text-slate-500">No clause flags detected.</p>
-                                </div>
-                            ` : clauseFlags.map(flag => `
-                                <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                            <h4 class="text-[11px] font-semibold uppercase tracking-wider text-muted px-1">Clause Flags</h4>
+                            ${clauseFlags.length === 0 ? card(`<p class="text-xs text-muted p-4">No clause flags detected.</p>`) : clauseFlags.map(flag => card(`
+                                <div class="p-4">
                                     <div class="flex justify-between items-start mb-2">
-                                        <span class="text-[10px] uppercase text-slate-400 font-bold">Clause ${displayField(flag.section, '—')}</span>
-                                        <span class="material-symbols-outlined text-slate-300 text-sm">flag</span>
+                                        <span class="text-[10px] uppercase text-muted font-bold">Clause ${displayField(flag.section, '—')}</span>
+                                        <span class="material-symbols-outlined text-brass text-sm">flag</span>
                                     </div>
-                                    <h5 class="text-sm font-bold mb-1">${escapeHtml(flag.title)}</h5>
-                                    <p class="text-xs text-slate-600 dark:text-slate-400">${escapeHtml(flag.description)}</p>
+                                    <h5 class="text-sm font-bold text-ink mb-1">${escapeHtml(flag.title)}</h5>
+                                    <p class="text-xs text-muted">${escapeHtml(flag.description)}</p>
                                 </div>
-                            `).join('')}
+                            `)).join('')}
                         </div>
 
                         <div class="flex flex-col gap-3">
-                            <h4 class="text-xs font-bold uppercase text-slate-400 tracking-widest px-1">Compliance Checks</h4>
-                            <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                            <h4 class="text-[11px] font-semibold uppercase tracking-wider text-muted px-1">Compliance Checks</h4>
+                            ${card(`
+                                <div class="p-4">
                                 ${complianceChecks.length > 0 ? `
                                     <div class="flex items-center justify-between mb-2">
-                                        <span class="text-xs text-slate-500">Checks Passed</span>
-                                        <span class="text-xs font-bold text-emerald-600">${compliancePassCount}/${complianceChecks.length}</span>
+                                        <span class="text-xs text-muted">Checks Passed</span>
+                                        <span class="text-xs font-bold text-[#1E7F5C] figures">${compliancePassCount}/${complianceChecks.length}</span>
+                                        ${compliancePassCount === complianceChecks.length ? sealBadge('All passed') : ''}
                                     </div>
-                                    <div class="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full">
-                                        <div class="bg-emerald-500 h-full rounded-full" style="width: ${Math.round((compliancePassCount / complianceChecks.length) * 100)}%"></div>
+                                    <div class="w-full bg-line h-2 rounded-full">
+                                        <div class="bg-[#1E7F5C] h-full rounded-full" style="width: ${Math.round((compliancePassCount / complianceChecks.length) * 100)}%"></div>
                                     </div>
-                                ` : `<p class="text-xs text-slate-400 italic">No compliance checks verified</p>`}
-                            </div>
+                                ` : `<p class="text-xs text-muted italic">No compliance checks verified</p>`}
+                                </div>
+                            `)}
                         </div>
 
                     </div>
@@ -1061,18 +1090,18 @@ function renderLegalView() {
     return `
         <main class="flex-1 flex flex-row overflow-hidden">
             <!-- Left Pane: Document Viewer -->
-            <div class="flex-1 flex flex-col bg-slate-50 dark:bg-slate-950 overflow-hidden relative border-r border-slate-200 dark:border-slate-800">
-                <div class="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-3 flex justify-between items-center shrink-0">
+            <div class="flex-1 flex flex-col bg-paper overflow-hidden relative border-r border-line">
+                <div class="bg-surface border-b border-line px-6 py-3 flex justify-between items-center shrink-0">
                     <div class="flex items-center gap-3">
-                        <nav class="flex items-center gap-2 text-xs font-medium text-slate-500 uppercase tracking-wider">
+                        <nav class="flex items-center gap-2 text-xs font-medium text-muted uppercase tracking-wider">
                             <a class="hover:text-primary cursor-pointer" onclick="navigateTo('upload')">Contracts</a>
                             <span>/</span>
-                            <span class="text-slate-900 dark:text-slate-200">${state.currentContract ? state.currentContract.name : 'Document'}.pdf</span>
+                            <span class="text-ink">${state.currentContract ? state.currentContract.name : 'Document'}.pdf</span>
                         </nav>
                     </div>
                 </div>
                 <div class="flex-1 overflow-y-auto p-8 custom-scrollbar">
-                    <div class="max-w-4xl mx-auto bg-white dark:bg-slate-900 p-16 document-paper min-h-[1100px] text-slate-800 dark:text-slate-200 leading-relaxed shadow-sm rounded-sm">
+                    <div class="max-w-4xl mx-auto bg-surface p-16 document-paper min-h-[1100px] text-ink leading-relaxed shadow-sm rounded-sm">
                         <iframe src="/api/contracts/${state.currentContract.id}/file" class="w-full h-full border-0 min-h-[1000px]"></iframe>
                     </div>
                     ${renderExtractedTextPanel()}
@@ -1080,33 +1109,33 @@ function renderLegalView() {
             </div>
 
             <!-- Right Pane: Intelligence Sidebar -->
-            <aside class="w-[380px] lg:w-[420px] xl:w-[480px] bg-white dark:bg-slate-900 flex flex-col shrink-0 overflow-hidden border-l border-slate-200 dark:border-slate-800">
-                <div class="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+            <aside class="w-[380px] lg:w-[420px] xl:w-[480px] bg-surface flex flex-col shrink-0 overflow-hidden border-l border-line">
+                <div class="p-4 border-b border-line bg-paper">
                     <div class="flex items-center justify-between mb-4">
-                        <h3 class="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <h3 class="font-display font-bold text-ink flex items-center gap-2">
                             <span class="material-symbols-outlined text-primary">analytics</span>
                             Legal Insights
                         </h3>
                     </div>
                     <div class="grid grid-cols-3 gap-2">
-                        <div class="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-center">
-                            <p class="text-[10px] text-slate-500 uppercase font-bold">Risk Level</p>
+                        <div class="bg-surface p-2 rounded-lg border border-line text-center">
+                            <p class="text-[10px] text-muted uppercase font-bold">Risk Level</p>
                             <p class="text-sm font-bold ${riskLevelClasses(legalAnalysis.overallRisk)}">${displayField(legalAnalysis.overallRisk, 'Not determined')}</p>
                         </div>
-                        <div class="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-center">
-                            <p class="text-[10px] text-slate-500 uppercase font-bold">Compliance</p>
-                            <p class="text-sm font-bold ${complianceDisplay(legalAnalysis).cls}">${complianceDisplay(legalAnalysis).text}</p>
+                        <div class="bg-surface p-2 rounded-lg border border-line text-center">
+                            <p class="text-[10px] text-muted uppercase font-bold">Compliance</p>
+                            <p class="text-sm font-bold figures ${complianceDisplay(legalAnalysis).cls}">${complianceDisplay(legalAnalysis).text}</p>
                         </div>
-                        <div class="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-center">
-                            <p class="text-[10px] text-slate-500 uppercase font-bold">Flagged / Clauses</p>
-                            <p class="text-sm font-bold text-primary">${(legalAnalysis.enforceabilityRisks?.length ?? 0)}/${legalAnalysis.totalClauses ?? '—'}</p>
+                        <div class="bg-surface p-2 rounded-lg border border-line text-center">
+                            <p class="text-[10px] text-muted uppercase font-bold">Flagged / Clauses</p>
+                            <p class="text-sm font-bold text-primary figures">${(legalAnalysis.enforceabilityRisks?.length ?? 0)}/${legalAnalysis.totalClauses ?? '—'}</p>
                         </div>
                     </div>
                 </div>
 
-                <div class="flex border-b border-slate-200 dark:border-slate-800 px-4 gap-6 shrink-0">
-                    <button class="border-b-2 ${state.legalTab === 'analysis' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'} py-3 text-xs font-bold" onclick="switchLegalTab('analysis')">ANALYSIS</button>
-                    <button class="border-b-2 ${state.legalTab === 'versioning' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'} py-3 text-xs font-bold" onclick="switchLegalTab('versioning')">VERSIONING</button>
+                <div class="flex border-b border-line px-4 gap-6 shrink-0">
+                    <button class="border-b-2 ${state.legalTab === 'analysis' ? 'border-brass text-primary' : 'border-transparent text-muted hover:text-ink'} py-3 text-xs font-bold" onclick="switchLegalTab('analysis')">ANALYSIS</button>
+                    <button class="border-b-2 ${state.legalTab === 'versioning' ? 'border-brass text-primary' : 'border-transparent text-muted hover:text-ink'} py-3 text-xs font-bold" onclick="switchLegalTab('versioning')">VERSIONING</button>
                 </div>
 
                 <div class="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
@@ -1115,29 +1144,29 @@ function renderLegalView() {
                             <div class="size-12 mx-auto mb-3 rounded-full bg-primary/10 flex items-center justify-center">
                                 <span class="material-symbols-outlined text-2xl text-primary">history</span>
                             </div>
-                            <h3 class="text-md font-bold text-slate-900 dark:text-white mb-2">Contract Version History</h3>
+                            <h3 class="font-display text-md font-bold text-ink mb-2">Contract Version History</h3>
                             <button class="px-6 py-2 mb-4 bg-primary text-white text-xs font-bold rounded-lg shadow-sm hover:bg-primary/90 transition-all" onclick="document.getElementById('versionInput').click()">
                                 Upload New Version
                             </button>
                             <input type="file" id="versionInput" class="hidden" accept=".pdf,.doc,.docx,.txt" onchange="handleVersionSelected(event)">
-                            
+
                             <div class="space-y-3 mt-4 text-left">
                                 <!-- Current Active Version -->
-                                <div class="flex items-center gap-4 p-4 bg-white dark:bg-slate-900 rounded-xl border border-primary/30 ring-1 ring-primary/10">
-                                    <div class="size-10 rounded-full bg-primary text-white flex items-center justify-center text-xs font-bold">v${(state.currentContract.versions?.length || 0) + 1}</div>
+                                <div class="flex items-center gap-4 p-4 bg-surface rounded-lg border border-line ring-1 ring-brass/30">
+                                    <div class="size-10 rounded-full bg-ink text-white flex items-center justify-center text-xs font-bold">v${(state.currentContract.versions?.length || 0) + 1}</div>
                                     <div class="text-left flex-1 min-w-0">
                                         <p class="text-sm font-bold text-primary truncate">${escapeHtml(state.currentContract.originalName || state.currentContract.name)}</p>
-                                        <p class="text-xs text-slate-500">Current active version • ${formatDate(state.currentContract.uploadDate || new Date().toISOString())}</p>
+                                        <p class="text-xs text-muted">Current active version • ${formatDate(state.currentContract.uploadDate || new Date().toISOString())}</p>
                                     </div>
                                 </div>
 
                                 <!-- Historical Versions -->
                                 ${(state.currentContract.versions || []).slice().reverse().map(v => `
-                                    <div class="flex items-center gap-4 p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 opacity-70 hover:opacity-100 transition-opacity">
-                                        <div class="size-10 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center text-xs font-bold">v${v.version}</div>
+                                    <div class="flex items-center gap-4 p-4 bg-surface rounded-lg border border-line opacity-70 hover:opacity-100 transition-opacity">
+                                        <div class="size-10 rounded-full bg-paper border border-line text-muted flex items-center justify-center text-xs font-bold">v${v.version}</div>
                                         <div class="text-left flex-1 min-w-0">
-                                            <p class="text-sm font-bold truncate text-slate-700 dark:text-slate-300">${escapeHtml(v.originalName || v.name)}</p>
-                                            <p class="text-xs text-slate-500">Superseded • ${formatDate(v.uploadDate)}</p>
+                                            <p class="text-sm font-bold truncate text-ink">${escapeHtml(v.originalName || v.name)}</p>
+                                            <p class="text-xs text-muted">Superseded • ${formatDate(v.uploadDate)}</p>
                                         </div>
                                     </div>
                                 `).join('')}
@@ -1146,61 +1175,61 @@ function renderLegalView() {
                     ` : `
                         <!-- Compliance Checks -->
                         <div>
-                            <h4 class="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">
+                            <h4 class="text-[11px] font-semibold text-muted uppercase tracking-wider mb-3">
                                 Compliance Checks
                             </h4>
                             <div class="space-y-2">
                                 ${legalAnalysis.complianceChecks.length > 0 ? legalAnalysis.complianceChecks.map(check => {
                                     const icon = check.status === 'pass' ? 'check_circle' : (check.status === 'unverified' ? 'help' : 'report_problem');
-                                    const iconCls = check.status === 'pass' ? 'text-emerald-500' : (check.status === 'unverified' ? 'text-slate-400' : 'text-amber-500');
+                                    const iconCls = check.status === 'pass' ? 'text-[#1E7F5C]' : (check.status === 'unverified' ? 'text-muted' : 'text-[#B45309]');
                                     return `
-                                    <div class="flex items-start gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30">
+                                    <div class="flex items-start gap-3 p-3 rounded-lg border border-line bg-paper">
                                         <span class="material-symbols-outlined ${iconCls}">${icon}</span>
                                         <div>
-                                            <p class="text-sm font-semibold">${escapeHtml(check.name)}</p>
-                                            <p class="text-xs text-slate-500">${escapeHtml(check.note)}</p>
+                                            <p class="text-sm font-semibold text-ink flex items-center gap-1.5">${escapeHtml(check.name)} ${check.status === 'pass' ? sealBadge('Verified') : ''}</p>
+                                            <p class="text-xs text-muted">${escapeHtml(check.note)}</p>
                                         </div>
                                     </div>
-                                `; }).join('') : `<p class="text-xs text-slate-400 italic">No compliance checks could be verified against the contract text.</p>`}
+                                `; }).join('') : `<p class="text-xs text-muted italic">No compliance checks could be verified against the contract text.</p>`}
                             </div>
                         </div>
 
                         <!-- Enforceability Risks -->
                         <div>
-                            <h4 class="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center justify-between">
+                            <h4 class="text-[11px] font-semibold text-muted uppercase tracking-wider mb-3 flex items-center justify-between">
                                 Enforceability Risks
-                                <span class="bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full text-[9px] font-bold tracking-normal">${legalAnalysis.enforceabilityRisks.length} ALERTS</span>
+                                <span class="bg-[#B3362B]/10 text-[#B3362B] px-1.5 py-0.5 rounded-full text-[9px] font-bold tracking-normal">${legalAnalysis.enforceabilityRisks.length} ALERTS</span>
                             </h4>
                             <div class="space-y-3">
                                 ${legalAnalysis.enforceabilityRisks.length > 0 ? legalAnalysis.enforceabilityRisks.map(risk => `
-                                    <div class="p-3 rounded-lg border border-red-200 dark:border-red-900 bg-red-50/50 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-900">
+                                    <div class="p-3 rounded-lg border border-[#B3362B]/30 bg-[#B3362B]/5 ring-1 ring-[#B3362B]/20">
                                         <div class="flex justify-between items-start mb-2">
-                                            <span class="bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">${escapeHtml(risk.risk || 'RISK')}</span>
+                                            <span class="bg-[#B3362B] text-white text-[9px] font-bold px-1.5 py-0.5 rounded">${escapeHtml(risk.risk || 'RISK')}</span>
                                         </div>
-                                        <p class="text-sm font-bold text-red-900 dark:text-red-400 mb-1">${escapeHtml(risk.title)}</p>
-                                        <p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-2">${escapeHtml(risk.description)}</p>
-                                        ${risk.quote && risk.quote !== 'Not specified' ? `<div class="mt-2 mb-3 bg-white dark:bg-slate-900 p-2 border-l-2 border-red-500 rounded shadow-sm text-[10px] text-slate-700 dark:text-slate-300 italic">"${escapeHtml(risk.quote)}"</div>` : ''}
+                                        <p class="text-sm font-bold text-[#B3362B] mb-1">${escapeHtml(risk.title)}</p>
+                                        <p class="text-xs text-muted leading-relaxed mb-2">${escapeHtml(risk.description)}</p>
+                                        ${risk.quote && risk.quote !== 'Not specified' ? `<div class="mt-2 mb-3 bg-surface p-2 border-l-2 border-[#B3362B] rounded shadow-sm text-[10px] text-ink italic">"${escapeHtml(risk.quote)}"</div>` : ''}
                                     </div>
-                                `).join('') : `<p class="text-xs text-slate-400 italic">No enforceability risks could be verified against the contract text.</p>`}
+                                `).join('') : `<p class="text-xs text-muted italic">No enforceability risks could be verified against the contract text.</p>`}
                             </div>
                         </div>
 
                         <!-- Jurisdiction Details -->
                         <div>
-                            <h4 class="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">Jurisdiction Context</h4>
-                            <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border border-slate-200 dark:border-slate-800">
+                            <h4 class="text-[11px] font-semibold text-muted uppercase tracking-wider mb-3">Jurisdiction Context</h4>
+                            <div class="bg-paper p-4 rounded-lg border border-line">
                                 <div class="flex items-center gap-3 mb-4">
-                                    <div class="size-10 bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-700 flex items-center justify-center">
+                                    <div class="size-10 bg-surface rounded border border-line flex items-center justify-center">
                                         <span class="material-symbols-outlined text-primary">location_on</span>
                                     </div>
                                     <div>
-                                        <p class="text-sm font-bold ${[EMPTY_FIELD_TEXT, 'Not determined'].includes(legalAnalysis.jurisdiction.location) ? 'text-slate-400 italic' : ''}">${displayField(legalAnalysis.jurisdiction.location, 'Not determined')}</p>
-                                        <p class="text-xs text-slate-500">Governing Law (${displayField(legalAnalysis.jurisdiction.governingLaw, 'Not determined')})</p>
+                                        <p class="text-sm font-bold ${[EMPTY_FIELD_TEXT, 'Not determined'].includes(legalAnalysis.jurisdiction.location) ? 'text-muted italic' : 'text-ink'}">${displayField(legalAnalysis.jurisdiction.location, 'Not determined')}</p>
+                                        <p class="text-xs text-muted">Governing Law (${displayField(legalAnalysis.jurisdiction.governingLaw, 'Not determined')})</p>
                                     </div>
                                 </div>
                                 <ul class="space-y-2">
                                     ${(legalAnalysis.jurisdiction.notes || []).map(note => `
-                                        <li class="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                                        <li class="flex items-center gap-2 text-xs text-muted">
                                             <span class="size-1.5 bg-primary rounded-full"></span>
                                             ${escapeHtml(note)}
                                         </li>
@@ -1228,34 +1257,34 @@ function renderPMView() {
     return `
         <div class="flex flex-1 overflow-hidden">
             <!-- Main Workspace -->
-            <main class="flex-1 flex flex-col bg-slate-50 dark:bg-background-dark overflow-hidden">
+            <main class="flex-1 flex flex-col bg-paper overflow-hidden">
                 <!-- Workspace Header -->
-                <div class="px-6 py-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1a2530]">
+                <div class="px-6 py-4 flex items-center justify-between border-b border-line bg-surface">
                     <div class="flex flex-col">
                         <div class="flex items-center gap-2 mb-1">
-                            <span class="text-xs text-[#4c739a] font-medium">Contracts</span>
-                            <span class="text-xs text-[#4c739a] font-medium">/</span>
-                            <span class="text-xs text-[#0d141b] dark:text-slate-200 font-bold">Operational Analysis View</span>
+                            <span class="text-xs text-muted font-medium">Contracts</span>
+                            <span class="text-xs text-muted font-medium">/</span>
+                            <span class="text-xs text-ink font-bold">Operational Analysis View</span>
                         </div>
-                        <h2 class="text-2xl font-black tracking-tight">Operational Analysis</h2>
+                        <h2 class="font-display text-2xl font-bold tracking-[-0.01em] text-ink">Operational Analysis</h2>
                     </div>
                 </div>
 
                 <!-- Tabs -->
-                <div class="px-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1a2530]">
+                <div class="px-6 border-b border-line bg-surface">
                     <div class="flex gap-8">
-                        <button class="py-4 text-sm font-bold border-b-2 ${state.pmTab === 'contract' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'} transition-all" onclick="switchPMTab('contract')">Contract Text</button>
-                        <button class="py-4 text-sm font-bold border-b-2 ${state.pmTab === 'operational' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'} transition-all" onclick="switchPMTab('operational')">Operational Insights</button>
-                        <button class="py-4 text-sm font-bold border-b-2 ${state.pmTab === 'actionItems' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'} transition-all" onclick="switchPMTab('actionItems')">Action Items <span class="ml-1 bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded-full text-[10px]">${pmAnalysis.actionItems.length}</span></button>
+                        <button class="py-4 text-sm font-bold border-b-2 ${state.pmTab === 'contract' ? 'border-brass text-primary' : 'border-transparent text-muted hover:text-ink'} transition-all" onclick="switchPMTab('contract')">Contract Text</button>
+                        <button class="py-4 text-sm font-bold border-b-2 ${state.pmTab === 'operational' ? 'border-brass text-primary' : 'border-transparent text-muted hover:text-ink'} transition-all" onclick="switchPMTab('operational')">Operational Insights</button>
+                        <button class="py-4 text-sm font-bold border-b-2 ${state.pmTab === 'actionItems' ? 'border-brass text-primary' : 'border-transparent text-muted hover:text-ink'} transition-all" onclick="switchPMTab('actionItems')">Action Items <span class="ml-1 bg-line px-1.5 py-0.5 rounded-full text-[10px] figures">${pmAnalysis.actionItems.length}</span></button>
                     </div>
                 </div>
 
                 <!-- Split Pane Workspace -->
                 <div class="flex flex-1 overflow-hidden">
                     <!-- Left: Contract Viewer -->
-                    <div class="flex-1 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-[#151e28] overflow-hidden">
-                        <div class="flex items-center justify-between px-6 py-3 border-b border-slate-100 dark:border-slate-800">
-                            <span class="text-xs font-bold uppercase text-slate-400">Contract Text</span>
+                    <div class="flex-1 flex flex-col border-r border-line bg-surface overflow-hidden">
+                        <div class="flex items-center justify-between px-6 py-3 border-b border-line">
+                            ${sectionLabel('Contract Text')}
                         </div>
                         <div class="flex-1 p-8 overflow-y-auto custom-scrollbar leading-relaxed">
                             <div class="max-w-2xl mx-auto space-y-6">
@@ -1266,29 +1295,29 @@ function renderPMView() {
                     </div>
 
                     <!-- Right: Operational Insights -->
-                    <div class="w-[450px] xl:w-[500px] flex flex-col bg-slate-50 dark:bg-background-dark overflow-y-auto custom-scrollbar p-6 space-y-6">
+                    <div class="w-[450px] xl:w-[500px] flex flex-col bg-paper overflow-y-auto custom-scrollbar p-6 space-y-6">
                         <!-- Section: Deliverables -->
                         <section>
                             <div class="flex items-center gap-2 mb-4">
                                 <span class="material-symbols-outlined text-primary">inventory_2</span>
-                                <h3 class="font-bold text-base">Key Deliverables</h3>
+                                <h3 class="font-display font-semibold text-base text-ink">Key Deliverables</h3>
                             </div>
                             <div class="space-y-3">
-                                ${pmAnalysis.deliverables.length > 0 ? pmAnalysis.deliverables.map((del, idx) => `
-                                    <div class="bg-white dark:bg-[#1a2530] p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
+                                ${pmAnalysis.deliverables.length > 0 ? pmAnalysis.deliverables.map((del, idx) => card(`
+                                    <div class="p-4">
                                         <div class="flex justify-between items-start">
-                                            <p class="text-sm font-bold">${escapeHtml(del.name)}</p>
-                                            ${del.status ? `<span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 text-[10px] font-bold">${escapeHtml(del.status)}</span>` : ''}
+                                            <p class="text-sm font-bold text-ink">${escapeHtml(del.name)}</p>
+                                            ${del.status ? `<span class="px-2 py-0.5 rounded-full bg-paper text-muted text-[10px] font-bold">${escapeHtml(del.status)}</span>` : ''}
                                         </div>
-                                        <p class="text-xs text-slate-500 mt-1">Due: ${displayField(del.due, 'Not specified')}</p>
+                                        <p class="text-xs text-muted mt-1">Due: ${displayField(del.due, 'Not specified')}</p>
                                         ${del.quote ? `
-                                            <button class="text-[10px] text-slate-400 hover:text-primary mt-2 flex items-center gap-1" onclick="toggleSourceRow('deliverable-${idx}')">
+                                            <button class="text-[10px] text-muted hover:text-primary mt-2 flex items-center gap-1" onclick="toggleSourceRow('deliverable-${idx}')">
                                                 <span class="material-symbols-outlined text-[12px]">visibility</span> Show source
                                             </button>
-                                            <div id="src-deliverable-${idx}" class="hidden mt-1 px-2 py-1.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded text-[10px] text-slate-500 dark:text-slate-400 italic">"${escapeHtml(del.quote)}"</div>
+                                            <div id="src-deliverable-${idx}" class="hidden mt-1 px-2 py-1.5 bg-paper border border-line rounded text-[10px] text-muted italic">"${escapeHtml(del.quote)}"</div>
                                         ` : ''}
                                     </div>
-                                `).join('') : `<p class="text-xs text-slate-400 italic">No deliverables are explicitly defined in the contract.</p>`}
+                                `)).join('') : `<p class="text-xs text-muted italic">No deliverables are explicitly defined in the contract.</p>`}
                             </div>
                         </section>
 
@@ -1296,21 +1325,27 @@ function renderPMView() {
                         <section>
                             <div class="flex items-center gap-2 mb-4">
                                 <span class="material-symbols-outlined text-primary">verified_user</span>
-                                <h3 class="font-bold text-base">IP Usage Rights</h3>
+                                <h3 class="font-display font-semibold text-base text-ink">IP Usage Rights</h3>
                             </div>
                             <div class="grid grid-cols-2 gap-3">
-                                <div class="bg-white dark:bg-[#1a2530] p-3 rounded-xl border border-slate-200 dark:border-slate-800">
-                                    <p class="text-[10px] font-bold text-slate-400 uppercase">Customer Data</p>
-                                    <p class="text-sm font-bold">${displayField(pmAnalysis.ipRights.customerData, 'Not specified')}</p>
+                                ${card(`
+                                <div class="p-3">
+                                    <p class="text-[10px] font-bold text-muted uppercase">Customer Data</p>
+                                    <p class="text-sm font-bold text-ink">${displayField(pmAnalysis.ipRights.customerData, 'Not specified')}</p>
                                 </div>
-                                <div class="bg-white dark:bg-[#1a2530] p-3 rounded-xl border border-slate-200 dark:border-slate-800">
-                                    <p class="text-[10px] font-bold text-slate-400 uppercase">SaaS Software</p>
-                                    <p class="text-sm font-bold">${displayField(pmAnalysis.ipRights.saasSoftware, 'Not specified')}</p>
+                                `)}
+                                ${card(`
+                                <div class="p-3">
+                                    <p class="text-[10px] font-bold text-muted uppercase">SaaS Software</p>
+                                    <p class="text-sm font-bold text-ink">${displayField(pmAnalysis.ipRights.saasSoftware, 'Not specified')}</p>
                                 </div>
-                                <div class="bg-white dark:bg-[#1a2530] p-3 rounded-xl border border-slate-200 dark:border-slate-800 col-span-2">
-                                    <p class="text-[10px] font-bold text-slate-400 uppercase">Usage Restrictions</p>
-                                    <p class="text-xs mt-1 text-slate-700 dark:text-slate-300">${displayField(pmAnalysis.ipRights.usageRestrictions, 'Not specified')}</p>
+                                `)}
+                                ${card(`
+                                <div class="p-3">
+                                    <p class="text-[10px] font-bold text-muted uppercase">Usage Restrictions</p>
+                                    <p class="text-xs mt-1 text-ink">${displayField(pmAnalysis.ipRights.usageRestrictions, 'Not specified')}</p>
                                 </div>
+                                `, 'col-span-2')}
                             </div>
                         </section>
 
@@ -1318,20 +1353,20 @@ function renderPMView() {
                         <section>
                             <div class="flex items-center gap-2 mb-4">
                                 <span class="material-symbols-outlined text-primary">schedule</span>
-                                <h3 class="font-bold text-base">Project Timelines</h3>
+                                <h3 class="font-display font-semibold text-base text-ink">Project Timelines</h3>
                             </div>
                             ${pmAnalysis.timelines.length > 0 ? `
-                                <div class="relative pl-6 space-y-6 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200 dark:before:bg-slate-800">
+                                <div class="relative pl-6 space-y-6 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-line">
                                     ${pmAnalysis.timelines.map((tl, i) => `
                                         <div class="relative">
-                                            <div class="absolute -left-[19px] top-1 size-3 rounded-full bg-slate-300 dark:bg-slate-700 ring-4 ring-white dark:ring-background-dark"></div>
-                                            <p class="text-xs font-bold">${escapeHtml(tl.event)}</p>
-                                            <p class="text-[11px] text-slate-500">${displayField(tl.date, 'Not specified')}</p>
-                                            ${tl.quote ? `<p class="text-[10px] text-slate-400 italic mt-1">"${escapeHtml(tl.quote)}"</p>` : ''}
+                                            <div class="absolute -left-[19px] top-1 size-3 rounded-full bg-primary ring-4 ring-paper"></div>
+                                            <p class="text-xs font-bold text-ink">${escapeHtml(tl.event)}</p>
+                                            <p class="text-[11px] text-muted figures">${displayField(tl.date, 'Not specified')}</p>
+                                            ${tl.quote ? `<p class="text-[10px] text-muted italic mt-1">"${escapeHtml(tl.quote)}"</p>` : ''}
                                         </div>
                                     `).join('')}
                                 </div>
-                            ` : `<p class="text-xs text-slate-400 italic">No dates or milestones are specified in the contract.</p>`}
+                            ` : `<p class="text-xs text-muted italic">No dates or milestones are specified in the contract.</p>`}
                         </section>
 
                         <!-- Section: Action Items -->
@@ -1339,21 +1374,21 @@ function renderPMView() {
                             <div class="flex items-center justify-between mb-4">
                                 <div class="flex items-center gap-2">
                                     <span class="material-symbols-outlined text-primary">fact_check</span>
-                                    <h3 class="font-bold text-base">Action Items</h3>
+                                    <h3 class="font-display font-semibold text-base text-ink">Action Items</h3>
                                 </div>
                             </div>
                             <div class="space-y-2">
-                                ${pmAnalysis.actionItems.length > 0 ? pmAnalysis.actionItems.map(item => `
-                                    <div class="flex items-center gap-3 bg-white dark:bg-[#1a2530] p-3 rounded-xl border border-slate-200 dark:border-slate-800 group transition-colors">
-                                        <div class="size-5 rounded border-2 border-slate-200 dark:border-slate-700 flex items-center justify-center text-transparent group-hover:text-primary transition-colors">
+                                ${pmAnalysis.actionItems.length > 0 ? pmAnalysis.actionItems.map(item => card(`
+                                    <div class="flex items-center gap-3 p-3 group transition-colors">
+                                        <div class="size-5 rounded border-2 border-line flex items-center justify-center text-transparent group-hover:text-primary transition-colors">
                                             <span class="material-symbols-outlined !text-[14px]">check</span>
                                         </div>
                                         <div class="flex-1">
-                                            <p class="text-xs font-medium">${escapeHtml(item.task)}</p>
-                                            <p class="text-[10px] text-slate-400">Assigned: ${displayField(item.assigned, 'Not specified')}</p>
+                                            <p class="text-xs font-medium text-ink">${escapeHtml(item.task)}</p>
+                                            <p class="text-[10px] text-muted">Assigned: ${displayField(item.assigned, 'Not specified')}</p>
                                         </div>
                                     </div>
-                                `).join('') : `<p class="text-xs text-slate-400 italic">No action items are specified in the contract.</p>`}
+                                `)).join('') : `<p class="text-xs text-muted italic">No action items are specified in the contract.</p>`}
                             </div>
                         </section>
                     </div>
@@ -1366,8 +1401,8 @@ function renderPMView() {
 function renderChatView() {
     return `
         <main class="flex flex-1 overflow-hidden">
-            <aside class="w-16 flex flex-col items-center py-6 gap-6 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800">
-                <div class="p-2 text-slate-400 hover:text-primary cursor-pointer transition-colors" title="Home" onclick="navigateTo('upload')">
+            <aside class="w-16 flex flex-col items-center py-6 gap-6 bg-surface border-r border-line">
+                <div class="p-2 text-muted hover:text-primary cursor-pointer transition-colors" title="Home" onclick="navigateTo('upload')">
                     <span class="material-symbols-outlined text-2xl">home</span>
                 </div>
                 <div class="p-2 text-primary bg-primary/10 rounded-lg" title="Active Chat">
@@ -1376,33 +1411,33 @@ function renderChatView() {
             </aside>
 
             <div class="flex-1 flex flex-col min-w-0">
-                <div class="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-3 flex flex-wrap justify-between items-center">
+                <div class="bg-surface border-b border-line px-6 py-3 flex flex-wrap justify-between items-center">
                     <div class="flex items-center gap-2 overflow-hidden">
-                        <a class="text-slate-500 hover:text-primary text-sm font-medium cursor-pointer" onclick="navigateTo('upload')">Contracts</a>
-                        <span class="text-slate-300 dark:text-slate-700">/</span>
-                        <span class="text-slate-900 dark:text-white text-sm font-bold truncate">${state.currentContract ? state.currentContract.name : 'Contract'}</span>
+                        <a class="text-muted hover:text-primary text-sm font-medium cursor-pointer" onclick="navigateTo('upload')">Contracts</a>
+                        <span class="text-line">/</span>
+                        <span class="text-ink text-sm font-bold truncate">${state.currentContract ? state.currentContract.name : 'Contract'}</span>
                     </div>
                 </div>
 
                 <div class="flex-1 flex overflow-hidden">
-                    <section class="flex-[1.5] bg-slate-50 dark:bg-background-dark overflow-y-auto p-8 border-r border-slate-200 dark:border-slate-800 flex flex-col">
-                        <div class="bg-white dark:bg-slate-900 shadow-sm border border-slate-200 dark:border-slate-800 mx-auto max-w-4xl w-full p-12 text-slate-800 dark:text-slate-300 leading-relaxed text-[15px]">
+                    <section class="flex-[1.5] bg-paper overflow-y-auto p-8 border-r border-line flex flex-col">
+                        <div class="bg-surface shadow-sm border border-line mx-auto max-w-4xl w-full p-12 text-ink leading-relaxed text-[15px] document-paper">
                                 <iframe src="/api/contracts/${state.currentContract.id}/file" class="w-full h-full border-0 min-h-[800px]"></iframe>
                         </div>
                         ${renderExtractedTextPanel()}
                     </section>
 
-                    <section class="flex-1 bg-white dark:bg-slate-900 flex flex-col shadow-2xl z-10">
-                        <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                    <section class="flex-1 bg-surface flex flex-col shadow-sm z-10">
+                        <div class="px-6 py-4 border-b border-line flex items-center justify-between">
                             <div class="flex items-center gap-3">
                                 <div class="size-8 rounded-full bg-primary/20 text-primary flex items-center justify-center">
                                     <span class="material-symbols-outlined text-xl" style="font-variation-settings: 'FILL' 1;">smart_toy</span>
                                 </div>
                                 <div>
-                                    <h3 class="text-sm font-bold text-slate-900 dark:text-white">AI Contract Specialist</h3>
+                                    <h3 class="font-display text-sm font-bold text-ink">AI Contract Specialist</h3>
                                     <div class="flex items-center gap-1.5">
-                                        <span class="size-1.5 bg-green-500 rounded-full"></span>
-                                        <span class="text-[10px] text-slate-500 font-medium uppercase tracking-tight">Contract Grounded</span>
+                                        <span class="size-1.5 bg-[#1E7F5C] rounded-full"></span>
+                                        <span class="text-[10px] text-muted font-medium uppercase tracking-tight">Contract Grounded</span>
                                     </div>
                                 </div>
                             </div>
@@ -1414,28 +1449,28 @@ function renderChatView() {
                                     <div class="size-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
                                         <span class="material-symbols-outlined text-4xl text-primary">smart_toy</span>
                                     </div>
-                                    <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2">Ask about this contract</h3>
-                                    <p class="text-sm text-slate-500 dark:text-slate-400">I can help you understand clauses, risks, and implications across this contract.</p>
+                                    <h3 class="font-display text-lg font-bold text-ink mb-2">Ask about this contract</h3>
+                                    <p class="text-sm text-muted">I can help you understand clauses, risks, and implications across this contract.</p>
                                 </div>
                             ` : state.chatMessages.map((msg, index) => renderChatMessage(msg, index)).join('')}
                         </div>
 
-                        <div class="p-6 border-t border-slate-100 dark:border-slate-800">
+                        <div class="p-6 border-t border-line">
                             <div class="flex flex-col gap-3">
                                 <div class="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                                    <button class="whitespace-nowrap bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 text-[11px] px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 transition-all" onclick="sendQuickQuestion('Explain termination rights')">
+                                    <button class="whitespace-nowrap bg-transparent hover:bg-paper text-muted text-[11px] px-3 py-1.5 rounded-full border border-line transition-all" onclick="sendQuickQuestion('Explain termination rights')">
                                         Explain termination rights
                                     </button>
-                                    <button class="whitespace-nowrap bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 text-[11px] px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 transition-all" onclick="sendQuickQuestion('What are the financial risks?')">
+                                    <button class="whitespace-nowrap bg-transparent hover:bg-paper text-muted text-[11px] px-3 py-1.5 rounded-full border border-line transition-all" onclick="sendQuickQuestion('What are the financial risks?')">
                                         Risk of non-payment
                                     </button>
-                                    <button class="whitespace-nowrap bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 text-[11px] px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 transition-all" onclick="sendQuickQuestion('What about subcontractor terms?')">
+                                    <button class="whitespace-nowrap bg-transparent hover:bg-paper text-muted text-[11px] px-3 py-1.5 rounded-full border border-line transition-all" onclick="sendQuickQuestion('What about subcontractor terms?')">
                                         Subcontractor terms
                                     </button>
                                 </div>
                                 <div class="relative group">
-                                    <textarea id="chatInput" class="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-xl py-3 pl-4 pr-12 text-sm text-slate-900 dark:text-white placeholder:text-slate-500 focus:ring-2 focus:ring-primary/40 resize-none transition-all" placeholder="Ask a follow-up question..." rows="2" onkeydown="handleChatKeydown(event)"></textarea>
-                                    <button class="absolute right-3 bottom-3 size-8 bg-primary text-white rounded-lg flex items-center justify-center shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all" onclick="handleSendChatMessage()">
+                                    <textarea id="chatInput" class="w-full bg-paper border border-line rounded-xl py-3 pl-4 pr-12 text-sm text-ink placeholder:text-muted focus:ring-2 focus:ring-brass/40 focus:border-brass resize-none transition-all" placeholder="Ask a follow-up question..." rows="2" onkeydown="handleChatKeydown(event)"></textarea>
+                                    <button class="absolute right-3 bottom-3 size-8 bg-primary text-white rounded-lg flex items-center justify-center shadow-sm hover:bg-primary/90 transition-all" onclick="handleSendChatMessage()">
                                         <span class="material-symbols-outlined text-xl">send</span>
                                     </button>
                                 </div>
@@ -1462,10 +1497,10 @@ function renderChatMessage(msg, index) {
         const contentHtml = escapeHtml(msg.content || '').replace(/\n/g, '<br>');
         return `
             <div class="flex flex-col items-end">
-                <div class="bg-primary text-white p-4 rounded-xl rounded-tr-none max-w-[85%] shadow-sm">
+                <div class="bg-primary text-white p-4 rounded-lg rounded-tr-none max-w-[85%] shadow-sm">
                     <p class="text-sm">${contentHtml}</p>
                 </div>
-                <span class="text-[10px] text-slate-400 mt-1 mr-1">${new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                <span class="text-[10px] text-muted mt-1 mr-1">${new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
         `;
     }
@@ -1476,10 +1511,10 @@ function renderChatMessage(msg, index) {
     if ((msg.isLoading) || (msg.streaming && !msg.content)) {
         return `
             <div class="flex flex-col items-start">
-                <div class="bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 p-5 rounded-xl rounded-tl-none max-w-[95%] shadow-sm">
+                <div class="bg-surface border border-line p-5 rounded-lg rounded-tl-none max-w-[95%] shadow-sm">
                     <div class="flex items-center gap-3">
                         <div class="loading-spinner"></div>
-                        <p class="text-sm text-slate-700 dark:text-slate-300">Preparing response...</p>
+                        <p class="text-sm text-muted">Preparing response...</p>
                     </div>
                 </div>
             </div>
@@ -1492,28 +1527,28 @@ function renderChatMessage(msg, index) {
 
     return `
         <div class="flex flex-col items-start">
-            <div class="bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 p-5 rounded-xl rounded-tl-none max-w-[95%] shadow-sm">
-                <p class="text-sm text-slate-800 dark:text-slate-200 leading-relaxed mb-4"${msg.streaming ? ' id="streaming-msg-content"' : ''}>${contentHtml}${msg.streaming ? '<span class="inline-block w-1.5 h-4 bg-primary/60 ml-0.5 align-middle animate-pulse"></span>' : ''}</p>
+            <div class="bg-surface border border-line p-5 rounded-lg rounded-tl-none max-w-[95%] shadow-sm">
+                <p class="text-sm text-ink leading-relaxed mb-4"${msg.streaming ? ' id="streaming-msg-content"' : ''}>${contentHtml}${msg.streaming ? '<span class="inline-block w-1.5 h-4 bg-primary/60 ml-0.5 align-middle animate-pulse"></span>' : ''}</p>
                 ${citations.length > 0 ? `
                     <div class="flex flex-wrap gap-1.5 mb-3">
                         ${citations.map((c, ci) => `
-                            <button class="flex items-center gap-1 px-2 py-1 rounded-full bg-primary/10 hover:bg-primary/20 text-primary text-[10px] font-medium transition-colors" onclick="revealCitation(${index}, ${ci})" title="${escapeHtml(c.quote)}">
-                                <span class="material-symbols-outlined text-[11px]">policy</span>${escapeHtml(truncateForChip(c.quote))}
+                            <button class="seal cursor-pointer hover:bg-brass/15 transition-colors" onclick="revealCitation(${index}, ${ci})" title="${escapeHtml(c.quote)}">
+                                <span class="material-symbols-outlined">policy</span>${escapeHtml(truncateForChip(c.quote))}
                             </button>
                         `).join('')}
                     </div>
                 ` : ''}
                 ${implications.length > 0 ? `
-                    <h4 class="text-xs font-bold text-slate-900 dark:text-white uppercase mb-2">Key Implications:</h4>
-                    <ul class="text-sm text-slate-700 dark:text-slate-300 space-y-2 list-disc pl-4">
+                    <h4 class="text-xs font-bold text-ink uppercase mb-2">Key Implications:</h4>
+                    <ul class="text-sm text-ink space-y-2 list-disc pl-4">
                         ${implications.map(imp => `<li>${escapeHtml(imp)}</li>`).join('')}
                     </ul>
                 ` : ''}
-                ${msg.interrupted ? `<p class="text-[11px] text-amber-600 dark:text-amber-400 mt-2 italic">Response interrupted before completion.</p>` : ''}
+                ${msg.interrupted ? `<p class="text-[11px] text-[#B45309] mt-2 italic">Response interrupted before completion.</p>` : ''}
             </div>
             ${!msg.streaming ? `
                 <div class="mt-3 flex gap-2">
-                    <button class="flex items-center gap-1 px-2.5 py-1 rounded border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] text-slate-500 transition-colors" onclick="copyChatMessage(${index})">
+                    <button class="flex items-center gap-1 px-2.5 py-1 rounded border border-line hover:bg-paper text-[11px] text-muted transition-colors" onclick="copyChatMessage(${index})">
                         <span class="material-symbols-outlined text-sm">content_copy</span> Copy for Report
                     </button>
                 </div>
@@ -1533,11 +1568,16 @@ function copyChatMessage(index) {
 
 function renderLoadingView() {
     return `
-        <main class="flex-1 items-center justify-center">
+        <main class="flex-1 flex items-center justify-center">
             <div class="text-center">
                 <div class="loading-spinner mx-auto mb-4"></div>
-                <h2 class="text-xl font-bold text-[#0d141b] dark:text-slate-50 mb-2">Analyzing Contract...</h2>
-            <p class="text-[#4c739a] dark:text-slate-400">Our AI is reviewing your document and generating insights.</p>
+                <h2 class="font-display text-xl font-bold text-ink mb-2">Analyzing contract…</h2>
+                <p class="text-muted text-sm mb-4">Our AI is reviewing your document and generating insights.</p>
+                <ul class="text-xs text-muted space-y-1">
+                    <li>Extracting document text</li>
+                    <li>Indexing clauses for retrieval</li>
+                    <li>Analyzing risk, compliance, and obligations</li>
+                </ul>
             </div>
         </main>
     `;
@@ -1834,7 +1874,7 @@ function showToast(message) {
     // Create toast element
     const toast = document.createElement('div');
     toast.id = 'toast-notification';
-    toast.className = 'fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-3 rounded-lg shadow-xl text-sm font-medium animate-fade-in-up transition-all';
+    toast.className = 'fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-6 py-3 rounded-lg shadow-xl text-sm font-medium animate-fade-in-up transition-all';
     toast.textContent = message;
 
     document.body.appendChild(toast);
@@ -1898,13 +1938,6 @@ function setupClickHandlers() {
     if (fileInput) {
         fileInput.addEventListener('change', handleFileSelect);
     }
-
-    // Handle role selection
-    document.querySelectorAll('input[name="role-selector"]').forEach(el => {
-        el.addEventListener('change', (e) => {
-            selectRole(e.target.value);
-        });
-    });
 }
 
 // Main Render Function
