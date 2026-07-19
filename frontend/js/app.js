@@ -296,7 +296,7 @@ function renderExtractedTextPanel() {
             const before = state.extractedText.slice(0, offset.start);
             const match = state.extractedText.slice(offset.start, offset.end);
             const after = state.extractedText.slice(offset.end);
-            bodyHtml = `${escapeHtml(before)}<mark id="citation-highlight" class="bg-brass/25 text-ink rounded px-0.5">${escapeHtml(match)}</mark>${escapeHtml(after)}`;
+            bodyHtml = `${escapeHtml(before)}<mark id="citation-highlight">${escapeHtml(match)}</mark>${escapeHtml(after)}`;
         } else {
             bodyHtml = escapeHtml(state.extractedText);
         }
@@ -707,7 +707,7 @@ function renderInvestorView() {
             <!-- Stats Cards -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 shrink-0">
                 ${card(`
-                <div class="flex flex-col gap-0.5 px-4 py-2.5 border-l-4 border-l-[#B3362B]">
+                <div class="flex flex-col gap-0.5 px-4 py-2.5">
                     ${sectionLabel('Total Financial Exposure')}
                     <div class="flex items-baseline gap-2">
                         <p class="text-ink text-xl font-bold figures">${displayField(investorAnalysis.financialExposure)}</p>
@@ -715,7 +715,7 @@ function renderInvestorView() {
                     </div>
                     <p class="text-muted text-[11px] line-clamp-1">${(investorAnalysis.calculations?.exposure?.items?.length || 0) > 0 ? `Sum of ${investorAnalysis.calculations.exposure.items.length} amount(s) verified in contract text` : 'No verified risk amounts found in contract text'}</p>
                 </div>
-                `)}
+                `, 'stat-tile sev-critical')}
                 ${card(`
                 <div class="flex flex-col gap-0.5 px-4 py-2.5">
                     ${sectionLabel('Loss Given Default (LGD)')}
@@ -729,7 +729,7 @@ function renderInvestorView() {
                     ` : ''}
                     ${renderLgdBreakdownText(investorAnalysis) ? `<p class="text-muted text-[11px] figures line-clamp-1">${renderLgdBreakdownText(investorAnalysis)}</p>` : ''}
                 </div>
-                `)}
+                `, 'stat-tile sev-navy')}
                 ${card(`
                 <div class="flex flex-col gap-0.5 px-4 py-2.5">
                     ${sectionLabel('Ambiguous Clauses')}
@@ -738,7 +738,7 @@ function renderInvestorView() {
                     </div>
                     <p class="text-muted text-[11px] line-clamp-1">${totalClauses !== null ? `Flagged out of ${totalClauses} ${investorAnalysis.clauseCountLevel === 'section' ? 'sections' : 'clauses'}` : 'Clause count not determined'}</p>
                 </div>
-                `)}
+                `, 'stat-tile sev-caution')}
             </div>
 
             <div class="flex-1 min-h-0 flex gap-6 overflow-hidden">
@@ -959,7 +959,7 @@ function renderPartnerView() {
 
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
                 ${card(`
-                <div class="flex flex-col gap-0.5 px-4 py-2.5 border-l-4 border-l-[#B3362B]">
+                <div class="flex flex-col gap-0.5 px-4 py-2.5">
                     ${sectionLabel('Total Financial Exposure')}
                     <div class="flex items-baseline gap-2">
                         <p class="text-ink text-xl font-bold figures">${displayField(analysis.financialExposure)}</p>
@@ -967,7 +967,7 @@ function renderPartnerView() {
                     </div>
                     <p class="text-muted text-[11px] line-clamp-1">${(analysis.calculations?.exposure?.items?.length || 0) > 0 ? `Sum of ${analysis.calculations.exposure.items.length} amount(s) verified in contract text` : 'No verified risk amounts found in contract text'}</p>
                 </div>
-                `)}
+                `, 'stat-tile sev-critical')}
                 ${card(`
                 <div class="flex flex-col gap-0.5 px-4 py-2.5">
                     ${sectionLabel('Compliance Score')}
@@ -976,7 +976,7 @@ function renderPartnerView() {
                     </div>
                     <p class="text-muted text-[11px] line-clamp-1">${Array.isArray(analysis.complianceChecks) && analysis.complianceChecks.length > 0 ? `${analysis.complianceChecks.length} check(s) evaluated` : 'Not determined'}</p>
                 </div>
-                `)}
+                `, 'stat-tile sev-clear')}
                 ${card(`
                 <div class="flex flex-col gap-0.5 px-4 py-2.5">
                     ${sectionLabel('Loss Given Default (LGD)')}
@@ -989,7 +989,7 @@ function renderPartnerView() {
                         </div>
                     ` : ''}
                 </div>
-                `)}
+                `, 'stat-tile sev-navy')}
                 ${card(`
                 <div class="flex flex-col gap-0.5 px-4 py-2.5">
                     ${sectionLabel('Ambiguous Clauses')}
@@ -998,7 +998,7 @@ function renderPartnerView() {
                     </div>
                     <p class="text-muted text-[11px] line-clamp-1">${totalClauses !== null ? `Flagged out of ${totalClauses} ${analysis.clauseCountLevel === 'section' ? 'sections' : 'clauses'}` : 'Clause count not determined'}</p>
                 </div>
-                `)}
+                `, 'stat-tile sev-caution')}
             </div>
 
             <div class="flex-1 min-h-0 flex gap-6 overflow-hidden">
