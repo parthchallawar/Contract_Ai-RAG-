@@ -104,6 +104,58 @@ const upload = multer({
 const contracts = new Map();
 const analyses = new Map();
 
+// --- Analysis progress -----------------------------------------------------
+// Which stage of the pipeline a contract is currently in, surfaced through the
+// 202 body of GET /contracts/:id/analysis so the loading view can show real
+// steps instead of a fixed list.
+//
+// DELIBERATELY EPHEMERAL — do not add a `stage` column to the contracts table.
+// An in-flight analysis dies with the process, and hydrateFromDb already
+// coerces any status:'analyzing' to 'error' at boot, so a persisted stage would
+// only ever describe a run that can no longer finish. Keeping it in memory also
+// avoids ~8 synchronous SQLite writes on the hot path per analysis.
+const ANALYSIS_STAGES = [
+  { key: 'extracting', label: 'Extracting document text' },
+  { key: 'indexing', label: 'Indexing clauses for retrieval' },
+  { key: 'monetary', label: 'Identifying monetary exposure' },
+  { key: 'pm', label: 'Analyzing deliverables and timelines' },
+  { key: 'legal', label: 'Analyzing risk and compliance' },
+  { key: 'scoring', label: 'Scoring and assembling analysis' },
+];
+
+const analysisProgress = new Map(); // contractId -> { key, startedAt, updatedAt }
+
+function setStage(contractId, key) {
+  if (!contractId) return;
+  const existing = analysisProgress.get(contractId);
+  analysisProgress.set(contractId, {
+    key,
+    startedAt: existing ? existing.startedAt : Date.now(),
+    updatedAt: Date.now(),
+  });
+}
+
+function clearProgress(contractId) {
+  if (contractId) analysisProgress.delete(contractId);
+}
+
+function getProgress(contractId) {
+  const entry = analysisProgress.get(contractId);
+  if (!entry) return null;
+  const stageIndex = ANALYSIS_STAGES.findIndex((s) => s.key === entry.key);
+  if (stageIndex === -1) return null;
+  return {
+    key: entry.key,
+    label: ANALYSIS_STAGES[stageIndex].label,
+    stageIndex,
+    totalStages: ANALYSIS_STAGES.length,
+    // Ship the labels so the client holds no duplicated copy of the stage list
+    // and can never drift out of sync with the backend.
+    stages: ANALYSIS_STAGES.map((s) => s.label),
+    elapsedMs: Date.now() - entry.startedAt,
+  };
+}
+
 // Routes
 
 // Health check
@@ -227,9 +279,11 @@ app.post('/api/contracts/upload', upload.single('file'), (req, res) => {
     console.log(`[${new Date().toISOString()}] Contract ${contractId} (${contract.name}) uploaded. Starting processing...`);
 
     // Run real analysis asynchronously
+    setStage(contractId, 'extracting');
     extractTextFromFile(contract.filePath).then(async (text) => {
       console.log(`[${new Date().toISOString()}] Text extraction complete for ${contract.name}. Characters: ${text.length}`);
       contract.text = text;
+      setStage(contractId, 'indexing');
       await ensureContractIndex(contract, text);
       db.saveContract(contract);
       if (contract.index) db.saveChunks(contract.id, contract.index.chunks, contract.index.embeddings);
@@ -242,11 +296,15 @@ app.post('/api/contracts/upload', upload.single('file'), (req, res) => {
       analyses.set(contractId, analysis);
       db.saveContract(contract);
       db.saveAnalysis(contractId, analysis);
+      clearProgress(contractId);
       console.log(`[${new Date().toISOString()}] Analysis completed successfully for ${contract.name}.`);
     }).catch(err => {
       console.error(`[${new Date().toISOString()}] Processing failed for ${contract.name}:`, err);
       contract.status = 'error';
       db.saveContract(contract);
+      // Must clear here too: a leftover entry would make the NEXT analysis of
+      // this contract briefly report the previous run's stage.
+      clearProgress(contractId);
     });
 
     res.json({
@@ -300,9 +358,11 @@ app.post('/api/contracts/:id/version', upload.single('file'), (req, res) => {
     db.saveContract(contract);
 
     // Run real analysis asynchronously
+    setStage(contract.id, 'extracting');
     extractTextFromFile(contract.filePath).then(async (text) => {
       console.log(`[${new Date().toISOString()}] Version update: Text extracted for ${contract.name}.`);
       contract.text = text;
+      setStage(contract.id, 'indexing');
       await ensureContractIndex(contract, text);
       db.saveContract(contract);
       if (contract.index) db.saveChunks(contract.id, contract.index.chunks, contract.index.embeddings);
@@ -313,11 +373,13 @@ app.post('/api/contracts/:id/version', upload.single('file'), (req, res) => {
       analyses.set(contract.id, analysis);
       db.saveContract(contract);
       db.saveAnalysis(contract.id, analysis);
+      clearProgress(contract.id);
       console.log(`[${new Date().toISOString()}] Version update completed for ${contract.name}.`);
     }).catch(err => {
       console.error(`[${new Date().toISOString()}] Version update failed for ${contract.name}:`, err);
       contract.status = 'error';
       db.saveContract(contract);
+      clearProgress(contract.id);
     });
 
     res.json(contract);
@@ -340,7 +402,13 @@ app.get('/api/contracts/:id/analysis', (req, res) => {
 
   const analysis = analyses.get(req.params.id);
   if (!analysis) {
-    return res.status(202).json({ status: 'analyzing', message: 'Analysis in progress' });
+    // Additive: `progress` may be null (e.g. after a restart, since stages are
+    // ephemeral). Clients that ignore it see the exact same 202 as before.
+    return res.status(202).json({
+      status: 'analyzing',
+      message: 'Analysis in progress',
+      progress: getProgress(req.params.id),
+    });
   }
 
   res.json(analysis);
@@ -377,9 +445,11 @@ app.patch('/api/contracts/:id/role', (req, res) => {
   console.log(`[${new Date().toISOString()}] Role updated to ${role} for ${contract.name}. Re-triggering analysis...`);
 
   // Run real analysis asynchronously
+  setStage(contract.id, 'extracting');
   extractTextFromFile(contract.filePath).then(async (text) => {
     console.log(`[${new Date().toISOString()}] Re-analysis: Text extracted for ${contract.name}.`);
     contract.text = text;
+    setStage(contract.id, 'indexing');
     await ensureContractIndex(contract, text);
     db.saveContract(contract);
     if (contract.index) db.saveChunks(contract.id, contract.index.chunks, contract.index.embeddings);
@@ -389,11 +459,13 @@ app.patch('/api/contracts/:id/role', (req, res) => {
     analyses.set(req.params.id, analysis);
     db.saveContract(contract);
     db.saveAnalysis(req.params.id, analysis);
+    clearProgress(contract.id);
     console.log(`[${new Date().toISOString()}] Re-analysis completed for ${contract.name}.`);
   }).catch(err => {
     console.error(`[${new Date().toISOString()}] Re-analysis failed for ${contract.name}:`, err);
     contract.status = 'error';
     db.saveContract(contract);
+    clearProgress(contract.id);
   });
 
   res.json({ id: contract.id, role: contract.role, status: contract.status });
@@ -435,6 +507,7 @@ app.delete('/api/contracts/:id', (req, res) => {
 
   contracts.delete(req.params.id);
   analyses.delete(req.params.id);
+  clearProgress(req.params.id); // an in-flight analysis must not leak an entry
   db.deleteContract(req.params.id);
 
   res.json({ message: 'Contract deleted successfully' });
@@ -1816,6 +1889,7 @@ async function analyzeDocumentText(text, contract) {
   const { candidates: monetaryCandidates, stats: monetaryStats } = extractMonetaryCandidates(text, 160);
 
   console.log(`${logPrefix} Monetary candidates: scanned=${monetaryStats.scanned} emitted=${monetaryStats.emitted} filtered=${monetaryStats.filtered}. Calling LLM for selection...`);
+  setStage(contract.id, 'monetary');
   const llmExposure = await selectMonetaryExposureWithLLM(monetaryCandidates);
 
   const totalExposureValue = llmExposure?.totalPotentialLoss || 0;
@@ -1872,6 +1946,7 @@ async function analyzeDocumentText(text, contract) {
   }
 
   console.log(`${logPrefix} Requesting PM insights...`);
+  setStage(contract.id, 'pm');
   const pmInsightsRaw = await generatePMInsightsWithRAG(text, contract);
   let pmInsights;
   if (pmInsightsRaw) {
@@ -1888,6 +1963,7 @@ async function analyzeDocumentText(text, contract) {
 
   // Generate dynamic Legal insights via OpenRouter RAG
   console.log(`${logPrefix} Requesting Legal insights...`);
+  setStage(contract.id, 'legal');
   const legalInsightsRaw = await generateLegalInsightsWithRAG(text, contract);
   let legalInsights;
   if (legalInsightsRaw) {
@@ -1903,6 +1979,7 @@ async function analyzeDocumentText(text, contract) {
   console.log(`${logPrefix} Legal insights ${legalInsightsRaw ? 'received' : 'unavailable — using fallback'}.`);
 
   console.log(`${logPrefix} Finalizing scoring and report assembly...`);
+  setStage(contract.id, 'scoring');
   const parsedComplianceScore = Number(legalInsights.complianceScore);
   // No fabricated fallback score — when the Legal LLM didn't provide one,
   // the honest answer is "not determined", not a guessed 84/64.

@@ -21,6 +21,9 @@ const state = {
     // Index into the normalized version list of the OLDER side of the diff;
     // null = no comparison open. Lives in state so it survives render().
     diffIndex: null,
+    // Live pipeline stage while an analysis runs; null when unknown (e.g. after
+    // a refresh, since the backend keeps stages in memory only).
+    analysisProgress: null,
     // Portfolio dashboard
     portfolio: null,          // { contracts: [], totals: {} } | null
     portfolioLoading: false,
@@ -500,11 +503,22 @@ async function getAnalysis(contractId) {
         const response = await fetch(`${API_BASE}/contracts/${contractId}/analysis`);
         const data = await response.json();
         if (data.status === 'analyzing') {
+            // Capture live stage info as a SIDE EFFECT and still return null.
+            // `null` is pollAnalysis's "keep polling" signal (it also means
+            // network error) — changing that return shape would ripple through
+            // all four call sites, so the progress rides alongside instead.
+            if (data.progress && state.currentContract?.id === contractId) {
+                state.analysisProgress = data.progress;
+                // Only repaint when the loading view is actually on screen;
+                // otherwise a 2s tick would blow away the user's current view.
+                if (state.isLoading) render();
+            }
             return null;
         }
         if (data.status === 'error') {
             return { __failed: true, message: data.message };
         }
+        state.analysisProgress = null;
         return data;
     } catch (error) {
         console.error('Error fetching analysis:', error);
@@ -2277,17 +2291,62 @@ function renderReportView() {
 }
 
 function renderLoadingView() {
+    const progress = state.analysisProgress;
+    const contractName = state.currentContract?.name;
+
+    // No live stage (fresh page load mid-analysis, or an older server): fall
+    // back to the original static copy rather than an empty checklist.
+    if (!progress || !Array.isArray(progress.stages)) {
+        return `
+            <main class="flex-1 flex items-center justify-center">
+                <div class="text-center">
+                    <div class="loading-spinner mx-auto mb-4"></div>
+                    <h2 class="font-display text-xl font-bold text-ink mb-2">Analyzing contract…</h2>
+                    <p class="text-muted text-sm mb-4">Our AI is reviewing your document and generating insights.</p>
+                    <ul class="text-xs text-muted space-y-1">
+                        <li>Extracting document text</li>
+                        <li>Indexing clauses for retrieval</li>
+                        <li>Analyzing risk, compliance, and obligations</li>
+                    </ul>
+                </div>
+            </main>
+        `;
+    }
+
+    const elapsedSec = Math.round((progress.elapsedMs || 0) / 1000);
+    const elapsed = elapsedSec >= 60
+        ? `${Math.floor(elapsedSec / 60)}m ${String(elapsedSec % 60).padStart(2, '0')}s`
+        : `${elapsedSec}s`;
+
+    const steps = progress.stages.map((label, i) => {
+        const done = i < progress.stageIndex;
+        const active = i === progress.stageIndex;
+        const icon = done ? 'check_circle' : (active ? 'progress_activity' : 'radio_button_unchecked');
+        const cls = done ? 'text-[#1E7F5C]' : (active ? 'text-primary' : 'text-muted/50');
+        const textCls = done ? 'text-muted' : (active ? 'text-ink font-semibold' : 'text-muted/70');
+        return `
+            <li class="flex items-center gap-2.5">
+                <span class="material-symbols-outlined text-[16px] ${cls} ${active ? 'animate-pulse' : ''}">${icon}</span>
+                <span class="text-xs ${textCls}">${escapeHtml(label)}</span>
+            </li>`;
+    }).join('');
+
     return `
         <main class="flex-1 flex items-center justify-center">
-            <div class="text-center">
-                <div class="loading-spinner mx-auto mb-4"></div>
-                <h2 class="font-display text-xl font-bold text-ink mb-2">Analyzing contract…</h2>
-                <p class="text-muted text-sm mb-4">Our AI is reviewing your document and generating insights.</p>
-                <ul class="text-xs text-muted space-y-1">
-                    <li>Extracting document text</li>
-                    <li>Indexing clauses for retrieval</li>
-                    <li>Analyzing risk, compliance, and obligations</li>
-                </ul>
+            <div class="w-full max-w-sm px-6">
+                <div class="text-center mb-5">
+                    <div class="loading-spinner mx-auto mb-3"></div>
+                    <h2 class="font-display text-xl font-bold text-ink">Analyzing contract…</h2>
+                    ${contractName ? `<p class="text-muted text-xs mt-1 truncate">${escapeHtml(contractName)}</p>` : ''}
+                </div>
+                <div class="flex items-center justify-between mb-2">
+                    ${sectionLabel(`Step ${progress.stageIndex + 1} of ${progress.totalStages}`)}
+                    <span class="text-[11px] text-muted figures">${elapsed} elapsed</span>
+                </div>
+                <div class="w-full bg-line h-1.5 rounded-full mb-4 overflow-hidden">
+                    <div class="bg-primary h-full rounded-full transition-all duration-500" style="width: ${Math.round(((progress.stageIndex + 1) / progress.totalStages) * 100)}%"></div>
+                </div>
+                <ul class="space-y-2">${steps}</ul>
             </div>
         </main>
     `;
