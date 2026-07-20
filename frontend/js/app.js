@@ -187,13 +187,21 @@ function sealBadge(text = 'Verified') {
 // Demo-fidelity ledger row: a single risk/obligation/rate line with an
 // optional inline source quote and a right-aligned amount. `critical` tints
 // the row red; `amountClass` colors the figure ('crit' | 'navy' | 'muted').
-function riskLedgerRow(item, { critical = false, amountClass = 'navy' } = {}) {
+// Passing `group` + `index` makes the quote block clickable, jumping to the
+// phrase in the extracted-text panel. Only those two primitives cross the
+// onclick boundary — never the quote text itself.
+function riskLedgerRow(item, { critical = false, amountClass = 'navy', group = null, index = null } = {}) {
     const dup = item.possibleDuplicate
         ? '<span class="sev-chip caution" style="text-transform:none;letter-spacing:0">possible dup</span>'
         : '';
     const sev = critical ? '<span class="sev-chip crit">Risk</span>' : '';
     const meta = item.reason ? `<div class="rr-meta">${escapeHtml(item.reason)}</div>` : '';
-    const quote = item.sourceContext ? `<div class="quote-block">"${escapeHtml(item.sourceContext)}"</div>` : '';
+    const canReveal = Boolean(item.sourceContext) && group !== null && index !== null;
+    const quote = item.sourceContext
+        ? (canReveal
+            ? `<div class="quote-block quote-link" role="button" tabindex="0" title="Show in document" onclick="revealMonetaryQuote('${group}', ${index})">"${escapeHtml(item.sourceContext)}"</div>`
+            : `<div class="quote-block">"${escapeHtml(item.sourceContext)}"</div>`)
+        : '';
     const amtCls = amountClass === 'muted' ? '' : amountClass;
     return `
         <div class="risk-row ${critical ? 'crit' : ''}">
@@ -297,23 +305,72 @@ function findQuoteOffsetWithFallback(quote, text) {
     return null;
 }
 
-// Phase 3: reveals a chat citation in the document panel — opens the
-// extracted-text panel (loading it if needed) and highlights the quote.
-async function revealCitation(msgIndex, citIndex) {
-    const msg = state.chatMessages[msgIndex];
-    const citation = msg && Array.isArray(msg.citations) ? msg.citations[citIndex] : null;
-    if (!citation) return;
+// Opens the extracted-text panel (loading it if needed) and highlights `quote`
+// in it. This is the shared core behind every "show me this in the document"
+// affordance — chat citations, enforceability risks, monetary ledger rows, PM
+// deliverables and timelines.
+//
+// Never take a quote string from markup: inline onclick attributes can't carry
+// LLM-authored text (an apostrophe silently kills the handler). Callers pass
+// indices and look the quote up out of state — see the wrappers below.
+async function revealQuoteText(quote) {
+    if (!quote || quote === 'Not specified') return;
 
     state.showExtractedText = true;
-    state.highlightQuote = citation.quote;
+    state.highlightQuote = quote;
     render();
 
     if (!state.extractedText && !state.isExtractedTextLoading) {
         await loadExtractedText();
     }
 
+    // Re-query after the awaits: every render() replaces #app's innerHTML, so
+    // any node captured earlier is detached.
     render();
-    document.getElementById('citation-highlight')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    const marked = document.getElementById('citation-highlight');
+    if (marked) {
+        marked.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    } else {
+        // The quote couldn't be located in the extracted text (PDF extraction
+        // can reflow it). Say so instead of appearing to do nothing.
+        showToast('That quote could not be located in the extracted text.');
+    }
+}
+
+// Reveals a chat citation in the document panel.
+async function revealCitation(msgIndex, citIndex) {
+    const msg = state.chatMessages[msgIndex];
+    const citation = msg && Array.isArray(msg.citations) ? msg.citations[citIndex] : null;
+    if (!citation) return;
+    await revealQuoteText(citation.quote);
+}
+
+// Legal "Enforceability Risks" and Partner "Clause Flags" render the SAME
+// analysis.enforceabilityRisks array, so they share one index space.
+async function revealEnforceabilityQuote(riskIndex) {
+    const risk = state.currentAnalysis?.enforceabilityRisks?.[riskIndex];
+    if (!risk) return;
+    await revealQuoteText(risk.quote);
+}
+
+// Monetary ledger rows carry their evidence on `sourceContext`, not `quote`.
+// `group` is one of the numericFigures array names.
+async function revealMonetaryQuote(group, itemIndex) {
+    const item = state.currentAnalysis?.numericFigures?.[group]?.[itemIndex];
+    if (!item) return;
+    await revealQuoteText(item.sourceContext);
+}
+
+async function revealDeliverableQuote(idx) {
+    const item = state.currentAnalysis?.deliverables?.[idx];
+    if (!item) return;
+    await revealQuoteText(item.quote);
+}
+
+async function revealTimelineQuote(idx) {
+    const item = state.currentAnalysis?.timelines?.[idx];
+    if (!item) return;
+    await revealQuoteText(item.quote);
 }
 
 function renderExtractedTextPanel() {
@@ -841,22 +898,22 @@ function renderInvestorView() {
                                 <div>
                                     ${analysis.numericFigures.risks.length > 0 ? `
                                         <div class="risk-group">Identified Risks · verified</div>
-                                        ${analysis.numericFigures.risks.map((r) => riskLedgerRow(r, { critical: true, amountClass: 'crit' })).join('')}
+                                        ${analysis.numericFigures.risks.map((r, i) => riskLedgerRow(r, { critical: true, amountClass: 'crit', group: 'risks', index: i })).join('')}
                                     ` : ''}
 
                                     ${analysis.numericFigures.obligations.length > 0 ? `
                                         <div class="risk-group">Obligations</div>
-                                        ${analysis.numericFigures.obligations.map((o) => riskLedgerRow(o, { amountClass: 'navy' })).join('')}
+                                        ${analysis.numericFigures.obligations.map((o, i) => riskLedgerRow(o, { amountClass: 'navy', group: 'obligations', index: i })).join('')}
                                     ` : ''}
 
                                     ${(analysis.numericFigures.rates || []).length > 0 ? `
                                         <div class="risk-group">Rates · per-unit, excluded from totals</div>
-                                        ${analysis.numericFigures.rates.map((r) => riskLedgerRow(r, { amountClass: 'muted' })).join('')}
+                                        ${analysis.numericFigures.rates.map((r, i) => riskLedgerRow(r, { amountClass: 'muted', group: 'rates', index: i })).join('')}
                                     ` : ''}
 
                                     ${(analysis.numericFigures.insuranceRequirements || []).length > 0 ? `
                                         <div class="risk-group">Insurance · excluded from exposure</div>
-                                        ${analysis.numericFigures.insuranceRequirements.map((r) => riskLedgerRow(r, { amountClass: 'muted' })).join('')}
+                                        ${analysis.numericFigures.insuranceRequirements.map((r, i) => riskLedgerRow(r, { amountClass: 'muted', group: 'insuranceRequirements', index: i })).join('')}
                                     ` : ''}
 
                                     <div class="mt-3 pt-3 border-t border-line space-y-2">
@@ -1024,7 +1081,7 @@ function renderPartnerView() {
                     <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar flex flex-col gap-4 pb-4">
                         <div class="flex flex-col gap-3">
                             <h4 class="text-[11px] font-semibold uppercase tracking-wider text-muted px-1">Clause Flags</h4>
-                            ${clauseFlags.length === 0 ? card(`<p class="text-xs text-muted p-4">No clause flags detected.</p>`) : clauseFlags.map(flag => card(`
+                            ${clauseFlags.length === 0 ? card(`<p class="text-xs text-muted p-4">No clause flags detected.</p>`) : clauseFlags.map((flag, i) => card(`
                                 <div class="p-4">
                                     <div class="flex justify-between items-start mb-2">
                                         <span class="text-[10px] uppercase text-muted font-bold">Clause ${displayField(flag.section, '—')}</span>
@@ -1032,6 +1089,7 @@ function renderPartnerView() {
                                     </div>
                                     <h5 class="text-sm font-bold text-ink mb-1">${escapeHtml(flag.title)}</h5>
                                     <p class="text-xs text-muted">${escapeHtml(flag.description)}</p>
+                                    ${flag.quote && flag.quote !== 'Not specified' ? `<div class="quote-block quote-link mt-2" role="button" tabindex="0" title="Show in document" onclick="revealEnforceabilityQuote(${i})">"${escapeHtml(flag.quote)}"</div>` : ''}
                                 </div>
                             `)).join('')}
                         </div>
@@ -1185,14 +1243,14 @@ function renderLegalView() {
                                 <span class="bg-[#B3362B]/10 text-[#B3362B] px-1.5 py-0.5 rounded-full text-[9px] font-bold tracking-normal">${legalAnalysis.enforceabilityRisks.length} ALERTS</span>
                             </h4>
                             <div class="space-y-3">
-                                ${legalAnalysis.enforceabilityRisks.length > 0 ? legalAnalysis.enforceabilityRisks.map(risk => `
+                                ${legalAnalysis.enforceabilityRisks.length > 0 ? legalAnalysis.enforceabilityRisks.map((risk, i) => `
                                     <div class="p-3 rounded-lg border border-[#B3362B]/30 bg-[#B3362B]/5 ring-1 ring-[#B3362B]/20">
                                         <div class="flex justify-between items-start mb-2">
                                             <span class="bg-[#B3362B] text-white text-[9px] font-bold px-1.5 py-0.5 rounded">${escapeHtml(risk.risk || 'RISK')}</span>
                                         </div>
                                         <p class="text-sm font-bold text-[#B3362B] mb-1">${escapeHtml(risk.title)}</p>
                                         <p class="text-xs text-muted leading-relaxed mb-2">${escapeHtml(risk.description)}</p>
-                                        ${risk.quote && risk.quote !== 'Not specified' ? `<div class="mt-2 mb-3 bg-surface p-2 border-l-2 border-[#B3362B] rounded shadow-sm text-[10px] text-ink italic">"${escapeHtml(risk.quote)}"</div>` : ''}
+                                        ${risk.quote && risk.quote !== 'Not specified' ? `<div class="quote-link mt-2 mb-3 bg-surface p-2 border-l-2 border-[#B3362B] rounded shadow-sm text-[10px] text-ink italic" role="button" tabindex="0" title="Show in document" onclick="revealEnforceabilityQuote(${i})">"${escapeHtml(risk.quote)}"</div>` : ''}
                                     </div>
                                 `).join('') : `<p class="text-xs text-muted italic">No enforceability risks could be verified against the contract text.</p>`}
                             </div>
@@ -1295,9 +1353,14 @@ function renderPMView() {
                                         </div>
                                         <p class="text-xs text-muted mt-1">Due: ${displayField(del.due, 'Not specified')}</p>
                                         ${del.quote ? `
-                                            <button class="text-[10px] text-muted hover:text-primary mt-2 flex items-center gap-1" onclick="toggleSourceRow('deliverable-${idx}')">
-                                                <span class="material-symbols-outlined text-[12px]">visibility</span> Show source
-                                            </button>
+                                            <div class="flex items-center gap-3 mt-2">
+                                                <button class="text-[10px] text-muted hover:text-primary flex items-center gap-1" onclick="toggleSourceRow('deliverable-${idx}')">
+                                                    <span class="material-symbols-outlined text-[12px]">visibility</span> Show source
+                                                </button>
+                                                <button class="text-[10px] text-muted hover:text-primary flex items-center gap-1" title="Show in document" onclick="revealDeliverableQuote(${idx})">
+                                                    <span class="material-symbols-outlined text-[12px]">my_location</span> Find in document
+                                                </button>
+                                            </div>
                                             <div id="src-deliverable-${idx}" class="hidden mt-1 px-2 py-1.5 bg-paper border border-line rounded text-[10px] text-muted italic">"${escapeHtml(del.quote)}"</div>
                                         ` : ''}
                                     </div>
@@ -1346,7 +1409,7 @@ function renderPMView() {
                                             <div class="absolute -left-[19px] top-1 size-3 rounded-full bg-primary ring-4 ring-paper"></div>
                                             <p class="text-xs font-bold text-ink">${escapeHtml(tl.event)}</p>
                                             <p class="text-[11px] text-muted figures">${displayField(tl.date, 'Not specified')}</p>
-                                            ${tl.quote ? `<p class="text-[10px] text-muted italic mt-1">"${escapeHtml(tl.quote)}"</p>` : ''}
+                                            ${tl.quote ? `<p class="quote-link text-[10px] text-muted italic mt-1" role="button" tabindex="0" title="Show in document" onclick="revealTimelineQuote(${i})">"${escapeHtml(tl.quote)}"</p>` : ''}
                                         </div>
                                     `).join('')}
                                 </div>

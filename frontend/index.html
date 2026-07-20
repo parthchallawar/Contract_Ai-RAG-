@@ -257,6 +257,12 @@
             border-left: 2px solid rgb(var(--c-brass)); padding: 6px 9px; border-radius: 0 5px 5px 0; margin-top: 6px;
             font-family: "Source Serif 4", Georgia, serif; }
 
+        /* A quote that can be jumped to in the extracted-text panel. Applied on
+           top of .quote-block or a view's own quote styling. */
+        .quote-link { cursor: pointer; transition: background-color .15s ease, border-color .15s ease; }
+        .quote-link:hover { background: rgb(var(--c-brass) / 0.12); border-color: rgb(var(--c-brass)); }
+        .quote-link:focus-visible { outline: 2px solid rgb(var(--c-brass)); outline-offset: 2px; }
+
         /* Document frame — the "paper" wrapper around the real file. */
         .doc-frame { background: rgb(var(--c-surface)); border: 1px solid rgb(var(--c-line)); border-radius: 8px;
             box-shadow: 0 4px 18px -10px rgba(22,34,46,.22); overflow: hidden; }
