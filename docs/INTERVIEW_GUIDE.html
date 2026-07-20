@@ -1,0 +1,705 @@
+<title>ContractAI — Interview Guide</title>
+<meta name="description" content="A plain-English walkthrough of how ContractAI works, for interview prep.">
+<style>
+  :root {
+    --paper: #f4f5f7;
+    --panel: #ffffff;
+    --ink: #1a1e24;
+    --muted: #5b6472;
+    --faint: #88909c;
+    --rule: #d9dce2;
+    --rule-strong: #c2c7d0;
+    --accent: #24499b;
+    --accent-ink: #ffffff;
+    --accent-soft: #e7edf9;
+    --warm: #96631a;
+    --warm-soft: #f7ecd8;
+    --code-bg: #1b2029;
+    --code-ink: #dfe4ec;
+    --code-accent: #8fb2ff;
+    --shadow: 0 1px 2px rgba(20, 24, 33, 0.06), 0 8px 24px -12px rgba(20, 24, 33, 0.12);
+    --serif: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
+    --sans: "Roboto Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+    --mono: "Cascadia Code", "SF Mono", "Consolas", "Menlo", "Liberation Mono", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #12151a;
+      --panel: #181c23;
+      --ink: #e4e7ec;
+      --muted: #9aa3b2;
+      --faint: #6b7280;
+      --rule: #262b33;
+      --rule-strong: #333a45;
+      --accent: #86aaff;
+      --accent-ink: #0d1220;
+      --accent-soft: #1c2740;
+      --warm: #e0b264;
+      --warm-soft: #2c2515;
+      --code-bg: #0d0f13;
+      --code-ink: #d8dee8;
+      --code-accent: #9dc0ff;
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -12px rgba(0,0,0,0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #12151a; --panel: #181c23; --ink: #e4e7ec; --muted: #9aa3b2; --faint: #6b7280;
+    --rule: #262b33; --rule-strong: #333a45; --accent: #86aaff; --accent-ink: #0d1220;
+    --accent-soft: #1c2740; --warm: #e0b264; --warm-soft: #2c2515;
+    --code-bg: #0d0f13; --code-ink: #d8dee8; --code-accent: #9dc0ff;
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -12px rgba(0,0,0,0.5);
+  }
+  :root[data-theme="light"] {
+    --paper: #f4f5f7; --panel: #ffffff; --ink: #1a1e24; --muted: #5b6472; --faint: #88909c;
+    --rule: #d9dce2; --rule-strong: #c2c7d0; --accent: #24499b; --accent-ink: #ffffff;
+    --accent-soft: #e7edf9; --warm: #96631a; --warm-soft: #f7ecd8;
+    --code-bg: #1b2029; --code-ink: #dfe4ec; --code-accent: #8fb2ff;
+    --shadow: 0 1px 2px rgba(20,24,33,0.06), 0 8px 24px -12px rgba(20,24,33,0.12);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation: none !important; transition: none !important; }
+  }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px;
+  }
+
+  h1, h2, h3, h4 { font-family: var(--sans); font-weight: 700; text-wrap: balance; color: var(--ink); }
+  code, pre, .mono { font-family: var(--mono); }
+
+  /* ---- Top bar ---- */
+  .topbar {
+    position: sticky; top: 0; z-index: 30;
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 20px;
+    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--rule);
+  }
+  .topbar .brand {
+    font-family: var(--sans); font-weight: 700; letter-spacing: 0.02em;
+    font-size: 15px; text-transform: uppercase; color: var(--ink);
+  }
+  .topbar .brand span { color: var(--accent); }
+  .topbar .tag {
+    margin-left: auto; font-family: var(--sans); font-size: 12px; color: var(--muted);
+    letter-spacing: 0.04em; text-transform: uppercase; display: none;
+  }
+  .navtoggle {
+    display: none; font-family: var(--sans); font-weight: 700; font-size: 13px;
+    background: var(--panel); color: var(--ink); border: 1px solid var(--rule-strong);
+    border-radius: 6px; padding: 7px 12px; cursor: pointer;
+  }
+  @media (min-width: 720px) { .topbar .tag { display: block; } }
+
+  /* ---- Layout ---- */
+  .layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); max-width: 1180px; margin: 0 auto; }
+
+  nav.toc {
+    position: sticky; top: 49px; align-self: start;
+    height: calc(100vh - 49px); overflow-y: auto;
+    padding: 28px 14px 40px 20px;
+    border-right: 1px solid var(--rule);
+  }
+  nav.toc .eyebrow {
+    font-family: var(--sans); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--faint); margin: 0 0 10px 10px;
+  }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; }
+  nav.toc li { margin: 0; }
+  nav.toc a {
+    display: flex; gap: 10px; align-items: baseline;
+    padding: 7px 10px; border-radius: 6px;
+    font-family: var(--sans); font-size: 13.5px; color: var(--muted);
+    text-decoration: none; line-height: 1.35;
+  }
+  nav.toc a .n { font-variant-numeric: tabular-nums; color: var(--faint); font-size: 12px; min-width: 1.4em; }
+  nav.toc a:hover { background: var(--accent-soft); color: var(--ink); }
+  nav.toc a.active { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+  nav.toc a.active .n { color: var(--accent); }
+
+  main { min-width: 0; padding: 8px 28px 100px; }
+  .doc-head { padding: 34px 4px 26px; border-bottom: 1px solid var(--rule); margin-bottom: 34px; }
+  .doc-head h1 { font-size: clamp(26px, 4vw, 34px); margin: 0 0 8px; letter-spacing: -0.01em; }
+  .doc-head p { margin: 0; color: var(--muted); font-family: var(--sans); font-size: 15px; max-width: 62ch; }
+
+  section.block { padding: 6px 4px 46px; scroll-margin-top: 64px; }
+  section.block + section.block { border-top: 1px solid var(--rule); padding-top: 40px; }
+  .section-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 18px; }
+  .section-head .num {
+    font-family: var(--mono); font-size: 13px; color: var(--accent);
+    background: var(--accent-soft); border-radius: 5px; padding: 3px 7px;
+    font-variant-numeric: tabular-nums;
+  }
+  .section-head h2 { margin: 0; font-size: clamp(21px, 2.6vw, 25px); }
+
+  main p { max-width: 68ch; }
+  main ul, main ol.steps { max-width: 68ch; padding-left: 1.3em; }
+  main li { margin: 0.35em 0; }
+  h3 { font-size: 17px; margin: 1.6em 0 0.6em; }
+  h4 { font-size: 14.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 1.4em 0 0.5em; }
+
+  /* ---- Pitch callout ---- */
+  blockquote.pitch {
+    margin: 0; max-width: 68ch;
+    background: var(--panel); border: 1px solid var(--rule); border-left: 4px solid var(--accent);
+    border-radius: 8px; padding: 20px 22px; box-shadow: var(--shadow);
+    font-size: 17px; line-height: 1.7; color: var(--ink);
+  }
+  blockquote.pitch cite { display: block; margin-top: 12px; font-family: var(--sans); font-style: normal; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
+
+  /* ---- Say-this callouts ---- */
+  .say {
+    max-width: 68ch; margin: 1.1em 0; padding: 12px 16px;
+    background: var(--warm-soft); border-radius: 8px; border-left: 3px solid var(--warm);
+    font-family: var(--sans); font-size: 14.5px; line-height: 1.55; color: var(--ink);
+  }
+  .say .label { display: block; font-weight: 700; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--warm); margin-bottom: 4px; }
+
+  .note {
+    max-width: 68ch; margin: 1em 0; padding: 10px 15px;
+    background: var(--panel); border: 1px dashed var(--rule-strong); border-radius: 8px;
+    font-family: var(--sans); font-size: 14px; color: var(--muted);
+  }
+  .note b { color: var(--ink); }
+
+  .story {
+    max-width: 68ch; margin: 1.1em 0; padding: 14px 18px;
+    background: var(--panel); border: 1px solid var(--rule); border-left: 3px solid var(--accent);
+    border-radius: 8px; box-shadow: var(--shadow); font-family: var(--sans); font-size: 14.5px; line-height: 1.6;
+  }
+  .story .label { display: block; font-weight: 700; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+
+  /* ---- Tables ---- */
+  .tablewrap { overflow-x: auto; max-width: 100%; margin: 1em 0 1.6em; border: 1px solid var(--rule); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; min-width: 480px; font-family: var(--sans); font-size: 14px; background: var(--panel); }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  thead th { background: var(--accent-soft); color: var(--ink); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+  tbody tr:last-child td { border-bottom: none; }
+  td code, th code { font-family: var(--mono); font-size: 13px; background: var(--accent-soft); color: var(--accent); padding: 1px 5px; border-radius: 4px; }
+  .num-col { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.win td { font-weight: 700; }
+  tr.win .num-col { color: var(--accent); }
+
+  /* ---- Code blocks ---- */
+  .codewrap { overflow-x: auto; max-width: 100%; margin: 1em 0 1.6em; }
+  pre {
+    margin: 0; padding: 16px 18px; border-radius: 8px;
+    background: var(--code-bg); color: var(--code-ink);
+    font-family: var(--mono); font-size: 13.5px; line-height: 1.6;
+    box-shadow: var(--shadow);
+  }
+  pre .k { color: var(--code-accent); }
+
+  /* ---- Function reference tables ---- */
+  .fnrefgroup { margin-bottom: 1.8em; }
+  .fnrefgroup h4 { margin-top: 1.8em; }
+
+  /* ---- Unique points ---- */
+  ol.points { list-style: none; padding: 0; margin: 1em 0; max-width: 68ch; display: grid; gap: 10px; }
+  ol.points li {
+    display: grid; grid-template-columns: 30px 1fr; gap: 12px; align-items: start;
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 13px 16px;
+  }
+  ol.points .pn { font-family: var(--mono); color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+  ol.points b { display: block; margin-bottom: 2px; }
+
+  /* ---- Q&A ---- */
+  .qa { max-width: 68ch; margin: 1.4em 0; padding-bottom: 1.4em; border-bottom: 1px solid var(--rule); }
+  .qa:last-child { border-bottom: none; }
+  .qa .q { font-family: var(--sans); font-weight: 700; color: var(--accent); margin: 0 0 6px; font-size: 15.5px; }
+  .qa .a { margin: 0; }
+
+  /* ---- Limitations ---- */
+  ul.limits { list-style: none; padding: 0; max-width: 68ch; }
+  ul.limits li {
+    padding: 9px 0 9px 22px; position: relative; border-bottom: 1px solid var(--rule); color: var(--ink);
+  }
+  ul.limits li:last-child { border-bottom: none; }
+  ul.limits li::before { content: "—"; position: absolute; left: 0; color: var(--faint); }
+
+  /* ---- Stat grid (numbers to memorize) ---- */
+  .statgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin: 1em 0; }
+  .stat { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; }
+  .stat .label { font-family: var(--sans); font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .stat .value { font-family: var(--mono); font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.45; }
+  .stat .value b { color: var(--warm); }
+
+  footer {
+    max-width: 68ch; margin: 30px 4px 0; padding-top: 20px; border-top: 1px solid var(--rule);
+    font-family: var(--sans); font-size: 12.5px; color: var(--faint);
+  }
+
+  /* ---- Responsive ---- */
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc {
+      position: fixed; top: 49px; left: 0; height: calc(100vh - 49px); width: 78vw; max-width: 300px;
+      background: var(--paper); z-index: 25; border-right: 1px solid var(--rule);
+      transform: translateX(-100%); transition: transform 0.2s ease;
+      box-shadow: var(--shadow);
+    }
+    nav.toc.open { transform: translateX(0); }
+    .navtoggle { display: inline-block; }
+    main { padding: 8px 18px 100px; }
+  }
+  .scrim { display: none; position: fixed; inset: 49px 0 0 0; background: rgba(0,0,0,0.35); z-index: 20; }
+  .scrim.show { display: block; }
+</style>
+
+<div class="topbar">
+  <button class="navtoggle" id="navtoggle" aria-expanded="false" aria-controls="toc">Contents</button>
+  <div class="brand">Contract<span>AI</span> — Interview Guide</div>
+  <div class="tag">Read before you walk in</div>
+</div>
+<div class="scrim" id="scrim"></div>
+
+<div class="layout">
+  <nav class="toc" id="toc">
+    <p class="eyebrow">On this page</p>
+    <ol>
+      <li><a href="#pitch"><span class="n">01</span>The 30-second pitch</a></li>
+      <li><a href="#stack"><span class="n">02</span>Tech stack</a></li>
+      <li><a href="#flow"><span class="n">03</span>What happens on upload</a></li>
+      <li><a href="#rag"><span class="n">04</span>How RAG works here</a></li>
+      <li><a href="#llm"><span class="n">05</span>Two AI models, one path</a></li>
+      <li><a href="#money"><span class="n">06</span>Numeric grounding</a></li>
+      <li><a href="#chat"><span class="n">07</span>Verified chat citations</a></li>
+      <li><a href="#persist"><span class="n">08</span>Persistence (SQLite)</a></li>
+      <li><a href="#eval"><span class="n">09</span>Evaluation harness</a></li>
+      <li><a href="#functions"><span class="n">10</span>Function reference</a></li>
+      <li><a href="#unique"><span class="n">11</span>What makes it unique</a></li>
+      <li><a href="#qa"><span class="n">12</span>Likely questions</a></li>
+      <li><a href="#limits"><span class="n">13</span>Honest limitations</a></li>
+      <li><a href="#numbers"><span class="n">14</span>Numbers to memorize</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <div class="doc-head">
+      <h1>ContractAI — Complete Interview Guide</h1>
+      <p>Everything in plain English: what it does, how the RAG pipeline works, how the two AI models connect, what each important function does, and why it was built this way. Read it once before an interview and you should be able to explain any part of it from memory.</p>
+    </div>
+
+    <section class="block" id="pitch">
+      <div class="section-head"><span class="num">01</span><h2>The 30-second pitch (say this first)</h2></div>
+      <blockquote class="pitch">
+        "ContractAI is a web app where you upload a legal contract — PDF, Word, or text — and it gives you an AI analysis tailored to your role: Investor, Legal, PM, or Partner. You can also chat with the document. The part that makes it different: it doesn't just dump the whole contract into an AI model. It runs a real RAG pipeline built from scratch — local embeddings plus BM25 keyword search, combined with Reciprocal Rank Fusion. Every dollar figure the AI reports is checked against the real document text before it's counted, and every quote the chat cites is checked to actually exist in the contract — fake quotes get dropped. I also built an evaluation harness that proves the hybrid retrieval beats plain keyword search, with real measured numbers."
+        <cite>Opening line — memorize this one</cite>
+      </blockquote>
+    </section>
+
+    <section class="block" id="stack">
+      <div class="section-head"><span class="num">02</span><h2>Tech stack</h2></div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Part</th><th>Technology</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr><td>Backend</td><td><code>Node.js + Express</code></td><td>One server file plus helpers — simple, no framework overhead</td></tr>
+            <tr><td>Frontend</td><td>Plain vanilla JS, one HTML file</td><td>No build step, easy to demo anywhere</td></tr>
+            <tr><td>Embeddings</td><td><code>@xenova/transformers</code> — MiniLM, running locally (ONNX)</td><td>Free, no API cost, no rate limits, private</td></tr>
+            <tr><td>Keyword search</td><td>BM25, hand-written, no library</td><td>Shows I understand the algorithm</td></tr>
+            <tr><td>AI models</td><td>OpenRouter (primary) + NVIDIA NIM (auto fallback)</td><td>Free tiers; fallback fixes the daily-limit problem</td></tr>
+            <tr><td>Database</td><td>SQLite via <code>better-sqlite3</code></td><td>Zero setup, survives restarts</td></tr>
+            <tr><td>File reading</td><td><code>pdf-parse</code> (PDF), <code>mammoth</code> (Word)</td><td>Standard extraction libraries</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="block" id="flow">
+      <div class="section-head"><span class="num">03</span><h2>Big picture — what happens when you upload a contract</h2></div>
+      <ol class="steps">
+        <li><b>Upload.</b> The browser sends the file to <code>POST /api/contracts/upload</code>. The server saves it, creates a contract record with status <code>analyzing</code>, and replies right away. The heavy work runs in the background. The frontend polls <code>GET /api/contracts/:id/analysis</code> every few seconds — it gets HTTP <code>202</code> ("still working") until the status flips to <code>completed</code>.
+          <div class="note"><b>Why async?</b> A big PDF plus three AI calls can take 30–60 seconds. You never want an HTTP request hanging that long.</div>
+        </li>
+        <li><b>Text extraction.</b> <code>extractTextFromFile()</code> picks the right reader — <code>pdf-parse</code> for PDF, <code>mammoth</code> for Word, plain read for TXT. Then <code>normalizeNumericSpacing()</code> fixes a common PDF problem: extraction breaks <code>$1,000</code> into <code>$1 000</code> with a stray space. The fix collapses spaces sitting between digits.</li>
+        <li><b>Indexing.</b> <code>ensureContractIndex()</code> builds the search index (full detail in the RAG section). It first hashes the text with <code>sha256</code>. If the hash matches last time — say, the user only switched roles on the same file — the index is reused instead of rebuilt, which skips re-embedding the whole document.</li>
+        <li><b>Analysis.</b> <code>analyzeDocumentText()</code> runs three AI calls and merges everything into one flat analysis object shared by every role:
+          <ul>
+            <li>Money analysis — <code>selectMonetaryExposureWithLLM</code> + <code>verifyMonetaryItems</code></li>
+            <li>Legal insights — <code>generateLegalInsightsWithRAG</code></li>
+            <li>PM insights — <code>generatePMInsightsWithRAG</code></li>
+            <li>Plus <code>extractRiskSignals()</code> — plain regex flags (e.g. "does this contract mention termination for convenience?") that need no AI at all</li>
+          </ul>
+        </li>
+        <li><b>Save.</b> The result lands in an in-memory <code>Map</code> and in SQLite (write-through). The frontend's next poll returns <code>200</code> with the full analysis, and the view renders.</li>
+      </ol>
+      <div class="note"><b>Design point worth repeating:</b> if any single AI step fails — bad JSON, a rate limit — it falls back to safe defaults and logs a note in <code>analysisWarnings</code>. The whole analysis never crashes because one part failed. This is <b>graceful degradation</b>, and it shows up everywhere in this project.</div>
+    </section>
+
+    <section class="block" id="rag">
+      <div class="section-head"><span class="num">04</span><h2>How RAG works here (the heart of the project)</h2></div>
+      <p>RAG stands for Retrieval-Augmented Generation. In plain terms: instead of sending the whole document to the AI, you first <i>find</i> the few most relevant pieces and send only those. Cheaper, fits small context windows, and gives more focused answers.</p>
+
+      <h3>4.1 — Chunking (<code>chunkText</code> in server.js)</h3>
+      <p>The contract text is cut into pieces of roughly 1000–1500 characters — but not blindly:</p>
+      <ul>
+        <li>First try to split on <b>headings and paragraphs</b> (<code>splitIntoBlocks</code>) — a contract clause should stay together.</li>
+        <li>If a block is too big, split on <b>sentence boundaries</b> (<code>splitBySentences</code>) — never mid-sentence.</li>
+        <li>Small blocks get packed together (<code>packBlocksIntoChunks</code>) so chunks aren't tiny.</li>
+        <li>Each chunk gets 150–200 characters of <b>overlap</b> with the previous one (<code>applyOverlap</code>), so nothing at a chunk border gets lost.</li>
+        <li>Every chunk remembers its start offset in the original text, needed later for citation highlighting.</li>
+      </ul>
+      <div class="say"><span class="label">Say this</span>"I use clause-aware chunking — split on headings first, sentences as fallback, never mid-sentence, with overlap so nothing falls between the cracks."</div>
+
+      <h3>4.2 — Two search indexes get built (<code>buildContractIndex</code> in retrieval.js)</h3>
+      <p>Every chunk goes into two independent indexes.</p>
+      <h4>A) BM25 — keyword search</h4>
+      <p><code>buildBM25Index</code> / <code>scoreBM25</code>. BM25 is the classic search-engine ranking formula (the one Elasticsearch uses), implemented here by hand. It scores a chunk higher when it contains the query words, with two adjustments:</p>
+      <ul>
+        <li><b>Rare words count more</b> (IDF) — "indemnification" showing up is a stronger signal than "agreement," which is everywhere.</li>
+        <li><b>Long chunks don't win unfairly</b> — length normalization with <code>b = 0.75</code> — and repeating a word ten times doesn't give ten times the score — saturation with <code>k1 = 1.5</code>.</li>
+      </ul>
+      <p>It uses the <code>ln(1 + …)</code> form of IDF so very common words never score negative. The tokenizer (<code>tokenize</code>) is contract-aware — it keeps things like <code>net-30</code>, <code>12.3</code>, and section numbers as single tokens instead of tearing them apart.</p>
+      <h4>B) Semantic embeddings — meaning search</h4>
+      <p><code>embedTexts</code> turns every chunk into a vector of 384 numbers using a small model called MiniLM (<code>Xenova/all-MiniLM-L6-v2</code>), running locally inside the Node process via ONNX — no API call, no cost, no data leaves the machine. Vectors that mean similar things point in similar directions, so "terminate the agreement at its convenience" and "cancel the contract whenever they want" land close together even though they share almost no words. All vectors are L2-normalized (length = 1) at embed time — a nice trick, because cosine similarity between normalized vectors is just a dot product: one multiply-add loop, very fast.</p>
+
+      <h3>4.3 — Query time: hybrid retrieval with RRF (<code>hybridRetrieve</code>)</h3>
+      <p>When a question comes in, from chat or from the analysis prompts:</p>
+      <ol class="steps">
+        <li>The query is scored against BM25 → ranking #1.</li>
+        <li>The query is embedded with the same MiniLM model and dot-producted against every chunk vector → ranking #2.</li>
+        <li>The two rankings are merged with Reciprocal Rank Fusion:</li>
+      </ol>
+      <div class="codewrap"><pre>final_score(chunk) = 1/(60 + rank_in_BM25) + 1/(60 + rank_in_semantic)</pre></div>
+      <p>A chunk ranked #1 in BM25 gets 1/61, #2 gets 1/62, and so on — same for the semantic list — then the two are added.</p>
+      <p><b>Why RRF instead of adding raw scores?</b> BM25 scores and cosine scores sit on totally different scales — BM25 might read 15.2, cosine is bounded 0–1. RRF only cares about <i>rank position</i>, so there's no messy score normalization to get right. The constant 60 is the standard value from the original RRF paper — it keeps rank #1 from steamrolling everything else. A chunk that shows up in <i>neither</i> ranking is dropped entirely — never returned as padding.</p>
+      <p><b>Why hybrid at all?</b> Contracts contain two different kinds of things. <b>Exact strings</b> — section numbers, "$50,000," defined terms like "Net-30" — where semantic search is weak and BM25 nails it. And <b>paraphrases</b> — the user asks "can they cancel anytime?" but the contract says "terminate for convenience" — where BM25 shares zero words and embeddings catch it instantly. Hybrid means neither method has to carry the whole job alone.</p>
+
+      <h3>4.4 — The fallback ladder</h3>
+      <p>Retrieval never crashes the app. Three levels, in order:</p>
+      <ol class="steps">
+        <li><b>Hybrid</b> — BM25 + embeddings + RRF. The normal case.</li>
+        <li><b>BM25-only</b> — used if the embedding model failed to load, e.g. a first-run model download failed.</li>
+        <li><b>Plain keyword scoring</b> (<code>scoreChunkByKeywords</code>) — used if the whole index is missing.</li>
+      </ol>
+      <div class="say"><span class="label">Say this</span>"Every layer of the system degrades instead of throwing — retrieval, database, AI provider, all of it."</div>
+    </section>
+
+    <section class="block" id="llm">
+      <div class="section-head"><span class="num">05</span><h2>Two AI models, one code path</h2></div>
+      <p><b>The problem:</b> the project runs on a free OpenRouter model (<code>nemotron-3-nano-30b-a3b:free</code>), and free means roughly 50 requests a day. During demos or testing, that limit gets hit and every AI feature starts returning errors.</p>
+      <p><b>The fix:</b> an ordered provider list with automatic fallback, defined in server.js as <code>LLM_PROVIDERS</code>:</p>
+      <div class="codewrap"><pre>const LLM_PROVIDERS = [
+  { name: 'openrouter', apiKey: OPENROUTER_API_KEY, model: OPENROUTER_MODEL, url: 'https://openrouter.ai/api/v1/chat/completions' },
+  { name: 'nim',        apiKey: NIM_API_KEY,        model: NIM_MODEL,        url: 'https://integrate.api.nvidia.com/v1/chat/completions' }
+].filter((p) =&gt; p.apiKey &amp;&amp; p.model);</pre></div>
+      <ul>
+        <li><b>Order matters</b> — OpenRouter is always tried first. NVIDIA NIM only kicks in if OpenRouter fails.</li>
+        <li><b>The filter</b> — if NIM's key or model aren't set in <code>.env</code>, it simply isn't in the array, and the app behaves exactly like the single-provider version. Fallback is fully optional.</li>
+        <li><b>Same shape, both providers</b> — both speak the "OpenAI-compatible" API format, same request JSON, same streaming format, so there's one code path — just different URL, key, and model per provider.</li>
+        <li><b>When fallback triggers</b> — a <code>429</code> (rate limit) or <code>5xx</code> (server error) moves to the next provider immediately, no point retrying a provider whose daily quota is dead. Other errors, like malformed JSON output, still retry the same provider first, since those are usually random.</li>
+        <li><b>Streaming rule</b> — for the chat stream, fallback only happens before the first token reaches the user. Once tokens are flowing, switching models mid-sentence would produce a mixed, confusing answer, so a mid-stream failure just shows an error instead.</li>
+        <li><b>JSON-mode tracking is per provider</b> (<code>jsonModeUnsupportedByProvider</code>) — if OpenRouter's model rejects <code>response_format: json</code>, that says nothing about NIM's model, so each is remembered separately.</li>
+      </ul>
+      <div class="story"><span class="label">Proof it works</span>Tested live — OpenRouter's real daily limit got hit, real 429s — and both the full analysis pipeline and the streaming chat fell back to NVIDIA NIM (<code>meta/llama-3.1-8b-instruct</code>) and produced correct output with verified citations.</div>
+    </section>
+
+    <section class="block" id="money">
+      <div class="section-head"><span class="num">06</span><h2>Numeric grounding — "the AI never invents a dollar amount"</h2></div>
+      <p>LLMs are bad at arithmetic and sometimes invent numbers outright. In a contract analysis tool, one invented dollar figure is a disaster. The fix is a three-step pipeline where the AI never does math and never gets the last word.</p>
+      <ol class="steps">
+        <li><b><code>extractMonetaryCandidates(text)</code></b> — a deterministic JS regex scan finds every money-looking number in the text, then filters hard: bare years ("2024"), section references ("Section 5.2"), table-of-contents dot-leader lines ("Payment ......... 12"), numbered headings, document codes like "FMA-9" or "DGS-30-084." A number only survives if it has a currency symbol or a money word nearby — "fee," "penalty," "payment" — via <code>hasMoneyKeywordNearby()</code> / <code>isNonMonetaryArtifact()</code>.</li>
+        <li><b><code>selectMonetaryExposureWithLLM(candidates)</code></b> — the AI's only job is to look at each candidate with its surrounding text and label it a <b>risk</b> (money that could be lost) or an <b>obligation</b> (money that must be paid). It classifies. It never adds numbers.</li>
+        <li><b><code>verifyMonetaryItems(parsed, candidates)</code></b> — every item the AI returned gets checked against the real candidate list: an exact raw match first ("$50,000" === "$50,000"), then amount-equality, which handles the AI reformatting "$50,000" as "50000 USD." Each real occurrence in the text can be consumed only once per category, so a fee listed twice by the AI gets deduplicated. If two items share an amount and their surrounding text overlaps more than 60% — Jaccard similarity on words, <code>jaccardSimilarity()</code> — the item gets a soft <code>possibleDuplicate</code> flag, shown to the user but not dropped, because two genuinely separate $10,000 fees can legally exist. Anything that can't be matched to real text is dropped and logged into <code>analysisWarnings</code> — it never touches the totals.</li>
+        <li><b>JS sums the survivors.</b> Every total is a plain JavaScript <code>reduce()</code>. The UI shows a grounding badge ("12/13 amounts verified") and a "show source" button per row that reveals the exact sentence the number came from.</li>
+      </ol>
+      <div class="say"><span class="label">Say this</span>"LLM classifies, JS verifies and sums. Nothing invented by the model can reach a total."</div>
+    </section>
+
+    <section class="block" id="chat">
+      <div class="section-head"><span class="num">07</span><h2>Chat with verified citations</h2></div>
+
+      <h3>Memory across turns</h3>
+      <p>The client sends the last 8 turns of conversation, but the server re-validates that history itself (<code>sanitizeChatHistory</code>) — length caps of 2000 characters per turn, role checks, dropping previous error messages. It never blindly trusts what the client sends.</p>
+      <p><b>The follow-up trick:</b> the retrieval query combines the last user question with the current one. Why? "Is that normal?" on its own retrieves nothing useful — but paired with the previous question, "What's the late payment penalty?", retrieval finds the right chunks.</p>
+
+      <h3>Answer format — plain text, not JSON</h3>
+      <p>The model replies in a fixed layout:</p>
+      <div class="codewrap"><pre>&lt;the answer text&gt;
+SOURCES:
+- "exact quote from contract"
+IMPLICATIONS:
+- practical consequence</pre></div>
+      <p><b>Why not JSON?</b> Free and small models frequently break JSON when writing conversational text — unescaped quotes, cut-off strings. A plain-text protocol with headers is far more robust, and <code>parseChatAnswer()</code> splits it tolerantly — a missing section just yields an empty list, never a crash.</p>
+
+      <h3>Citation verification — <code>verifyQuote()</code></h3>
+      <p>Every quote in SOURCES gets checked against the real contract text:</p>
+      <ol class="steps">
+        <li><b>Normalize both sides</b> — lowercase, curly quotes to straight quotes, whitespace collapsed to single spaces. Models often change these cosmetically.</li>
+        <li><b>Offset mapping</b> — while normalizing, <code>buildNormalizedOffsetMap()</code> remembers where each normalized character came from in the original text, so a match found in normalized space can point back to the exact position in the original document. That position powers click-to-highlight.</li>
+        <li><b>8-word-prefix retry</b> — models often start a quote correctly and then pad the ending with invented words. If the full quote fails to match, retry with just its first 8 words — if that matches, keep the real matched portion.</li>
+        <li><b>Still fails? Dropped.</b> An unverifiable quote is never shown, not even with a warning label — showing "maybe-fake" quotes would destroy trust in the real ones.</li>
+      </ol>
+      <p>The frontend keeps a mirror copy of this same normalization logic (<code>normalizeForQuoteMatch</code> / <code>findQuoteOffsetWithFallback</code> in app.js), so clicking a citation chip opens the extracted-text panel and highlights the exact quoted sentence in <code>&lt;mark id="citation-highlight"&gt;</code>.</p>
+
+      <h3>Streaming (SSE)</h3>
+      <p><code>POST /api/chat/stream</code> sends tokens one at a time over Server-Sent Events, so the answer appears word by word, like ChatGPT. <code>parseSseChunk()</code> is a line buffer — the network can split a <code>data: {...}</code> line in half between packets, so partial lines get buffered until the newline arrives. The frontend writes each token straight into one DOM node by id (<code>streaming-msg-content</code>) instead of re-rendering the whole page per token, which would rebuild the full page hundreds of times. One full render happens at the end. If streaming produces zero tokens, the frontend silently falls back to the normal non-streaming <code>POST /api/chat</code>.</p>
+
+      <div class="story"><span class="label">A real bug worth telling</span>Initially I used <code>req.on('close')</code> to detect the user closing the tab, in order to abort the AI call. But in Express, <code>req</code>'s <code>'close'</code> event fires as soon as the request body finishes reading — which killed every stream instantly. The fix was <code>res.on('close')</code>, guarded by a check on <code>res.writableEnded</code>. A good "hard bug I debugged" story if asked.</div>
+    </section>
+
+    <section class="block" id="persist">
+      <div class="section-head"><span class="num">08</span><h2>Persistence — SQLite (backend/db.js)</h2></div>
+      <ul>
+        <li>Uses <code>better-sqlite3</code> — synchronous, WAL mode.</li>
+        <li><b>Write-through + hydrate-on-boot.</b> All reads still come from in-memory <code>Map</code>s — fast, zero code change to routes — and every write additionally goes to SQLite. On server start, <code>hydrateFromDb()</code> loads everything back into the Maps.</li>
+        <li>Tables: <code>contracts</code>, <code>analyses</code> (the JSON blob), <code>chunks</code> — chunk text plus an embedding stored as raw bytes, a <code>Float32Array</code>'s buffer written directly and read back as a zero-copy view — <code>chat_messages</code>, <code>versions</code>.</li>
+        <li>BM25 is not stored — it's rebuilt from chunk text at boot, cheaper than serializing its internal maps.</li>
+        <li>A contract found at boot still marked <code>analyzing</code> means the process died mid-analysis, so it gets flipped to <code>error</code>.</li>
+        <li><b>Graceful degradation again:</b> if <code>better-sqlite3</code> fails to load — native module, platform issues — every db function becomes a no-op, <code>/api/health</code> reports <code>persistence: 'disabled'</code>, and the app runs memory-only. The app must never fail to start because of the database.</li>
+      </ul>
+    </section>
+
+    <section class="block" id="eval">
+      <div class="section-head"><span class="num">09</span><h2>Evaluation harness — "I have numbers, not vibes"</h2></div>
+      <p><code>backend/eval/</code> contains 3 synthetic fixture contracts, written for this purpose and PII-free, with deliberate paraphrase traps — questions worded to share no vocabulary with the answer text (the question says "walk away," the contract says "terminate for convenience"). A 30-item gold dataset (<code>dataset.json</code>) has 24 retrieval questions with known-correct source passages plus 6 numeric questions. <code>run-eval.js</code> compares three retrieval modes on the exact same production code paths and the same index, so only the scoring method differs, not the chunking:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Mode</th><th class="num-col">hit@4</th><th class="num-col">hit@6</th><th class="num-col">MRR</th></tr></thead>
+          <tbody>
+            <tr><td>Keyword (baseline)</td><td class="num-col">87.5%</td><td class="num-col">95.8%</td><td class="num-col">0.728</td></tr>
+            <tr><td>BM25 only</td><td class="num-col">87.5%</td><td class="num-col">91.7%</td><td class="num-col">0.747</td></tr>
+            <tr class="win"><td>Hybrid (RRF)</td><td class="num-col">95.8%</td><td class="num-col">95.8%</td><td class="num-col">0.852</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><b>hit@4</b> — was a correct chunk in the top 4 results? <b>MRR</b> — mean reciprocal rank, which rewards putting the right answer higher: 1st place scores 1.0, 2nd scores 0.5, 3rd scores 0.33, and so on. Hybrid wins on hit@4 and MRR, especially on the paraphrase traps that keyword and BM25 miss by design.</p>
+      <p><b>Honesty points kept in the repo on purpose:</b> keyword actually beats BM25 at hit@6 on this specific dataset — a real result, kept, not hidden. And the dataset was written before any tuning; a 30-item set proves direction, not statistical significance.</p>
+      <p>Default mode is fully offline and deterministic, about 1 second. An optional <code>--llm</code> flag also measures numeric-grounding rate and citation-verification rate, which needs API access and isn't deterministic.</p>
+      <div class="say"><span class="label">Say this</span>"I committed a baseline JSON with real measured numbers, including the result that doesn't flatter my system. That's the difference between an eval and a marketing slide."</div>
+    </section>
+
+    <section class="block" id="functions">
+      <div class="section-head"><span class="num">10</span><h2>Function reference, grouped and in plain English</h2></div>
+
+      <div class="fnrefgroup">
+        <h4>backend/retrieval.js — the RAG core</h4>
+        <div class="tablewrap"><table>
+          <tbody>
+            <tr><td><code>getEmbedder</code> / <code>warmupEmbedder</code> / <code>isEmbedderReady</code></td><td>Lazily load the local MiniLM model once; warmup starts the download early</td></tr>
+            <tr><td><code>embedTexts(texts)</code></td><td>Text list → list of 384-dim normalized Float32Array vectors</td></tr>
+            <tr><td><code>tokenize(text)</code></td><td>Contract-aware word splitting — keeps <code>net-30</code>, <code>12.3</code>, section numbers whole</td></tr>
+            <tr><td><code>buildBM25Index(chunks)</code></td><td>Builds term frequencies, document frequencies, lengths</td></tr>
+            <tr><td><code>scoreBM25(index, queryTokens)</code></td><td>Scores every chunk for a query with the BM25 formula</td></tr>
+            <tr><td><code>sha256(text)</code></td><td>Hash used to skip re-indexing unchanged text</td></tr>
+            <tr><td><code>buildContractIndex(text, chunkFn)</code></td><td>Full pipeline: chunk → BM25 index → embeddings</td></tr>
+            <tr><td><code>dot(a, b)</code></td><td>Dot product = cosine similarity, since vectors are pre-normalized</td></tr>
+            <tr><td><code>rankPositive(scores)</code></td><td>Turns raw scores into a rank list, keeping only positive-score chunks</td></tr>
+            <tr><td><code>hybridRetrieve(index, queryText, queryEmbedding, k)</code></td><td>The RRF fusion — returns top-k chunks</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="fnrefgroup">
+        <h4>backend/server.js — extraction &amp; chunking</h4>
+        <div class="tablewrap"><table>
+          <tbody>
+            <tr><td><code>extractTextFromFile</code></td><td>PDF/Word/TXT → plain text</td></tr>
+            <tr><td><code>normalizeNumericSpacing</code></td><td>Fixes <code>$1 000</code> → <code>$1000</code>, a PDF extraction artifact</td></tr>
+            <tr><td><code>chunkText</code> (+ <code>splitIntoBlocks</code>, <code>splitBySentences</code>, <code>packBlocksIntoChunks</code>, <code>applyOverlap</code>)</td><td>Clause-aware chunking with overlap</td></tr>
+            <tr><td><code>ensureContractIndex</code></td><td>Builds, or reuses via sha256, the retrieval index</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="fnrefgroup">
+        <h4>backend/server.js — money pipeline</h4>
+        <div class="tablewrap"><table>
+          <tbody>
+            <tr><td><code>extractMonetaryCandidates</code></td><td>Regex scan + false-positive filters → candidate list</td></tr>
+            <tr><td><code>hasMoneyKeywordNearby</code> / <code>isNonMonetaryArtifact</code></td><td>The filters — money words nearby; reject TOC lines, headings, doc codes</td></tr>
+            <tr><td><code>selectMonetaryExposureWithLLM</code></td><td>AI labels each candidate risk/obligation — classification only</td></tr>
+            <tr><td><code>verifyMonetaryItems</code> (+ <code>findCandidateMatch</code>, <code>verifyMonetaryItemCategory</code>, <code>normalizeRawForMatch</code>, <code>jaccardSimilarity</code>)</td><td>Grounding — matches every AI item to real text, dedups, flags possible duplicates</td></tr>
+            <tr><td><code>parseNumericAmount</code></td><td>"$1.5M" → 1500000, handles k/m/b suffixes and commas</td></tr>
+            <tr><td><code>computeLossGivenDefaultScore</code></td><td>Simple deterministic risk score from the verified totals</td></tr>
+            <tr><td><code>extractRiskSignals</code></td><td>Regex booleans — e.g. has termination-for-convenience clause?</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="fnrefgroup">
+        <h4>backend/server.js — LLM plumbing</h4>
+        <div class="tablewrap"><table>
+          <tbody>
+            <tr><td><code>callOpenRouter</code></td><td>Non-streaming AI call — loops over <code>LLM_PROVIDERS</code>, retries, JSON-mode fallback</td></tr>
+            <tr><td><code>attemptProviderOnce</code></td><td>One single attempt against one provider</td></tr>
+            <tr><td><code>callOpenRouterStream</code> / <code>attemptProviderStreamOnce</code></td><td>Same, streaming — provider fallback only before the first token</td></tr>
+            <tr><td><code>parseSseChunk</code></td><td>Buffers partial SSE lines from the upstream provider</td></tr>
+            <tr><td><code>cleanJsonResponse</code> / <code>parseJsonResponse</code></td><td>Strips ```json fences, parses with a safe fallback value</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="fnrefgroup">
+        <h4>backend/server.js — chat</h4>
+        <div class="tablewrap"><table>
+          <tbody>
+            <tr><td><code>sanitizeChatHistory</code> (+ <code>isErrorAssistantContent</code>)</td><td>Server-side validation of client-sent history</td></tr>
+            <tr><td><code>buildChatMessages</code></td><td>System prompt + retrieved chunks + history + question</td></tr>
+            <tr><td><code>parseChatAnswer</code> (+ <code>extractBulletLines</code>, <code>stripBulletPrefix</code>, <code>stripSurroundingQuotes</code>)</td><td>Splits the answer/SOURCES/IMPLICATIONS text protocol</td></tr>
+            <tr><td><code>verifyQuote</code> (+ <code>normalizeForQuoteMatch</code>, <code>buildNormalizedOffsetMap</code>, <code>findNormalizedOffset</code>)</td><td>The citation verifier — offset mapping plus 8-word retry</td></tr>
+            <tr><td><code>finalizeChatAnswer</code></td><td>Runs verification on all quotes, assembles the final response</td></tr>
+            <tr><td><code>generateChatResponse</code> / <code>generateChatResponseStream</code></td><td>The two chat entry points — share all the code above</td></tr>
+            <tr><td><code>persistChatTurn</code></td><td>Saves user+assistant messages to SQLite</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="fnrefgroup">
+        <h4>backend/server.js — analysis &amp; persistence</h4>
+        <div class="tablewrap"><table>
+          <tbody>
+            <tr><td><code>analyzeDocumentText</code></td><td>Orchestrates the three AI calls into one flat analysis object</td></tr>
+            <tr><td><code>generateLegalInsightsWithRAG</code> / <code>generatePMInsightsWithRAG</code></td><td>Role-specific insights fed with hybrid-retrieved context</td></tr>
+            <tr><td><code>getFallbackLegalInsights</code> / <code>getFallbackPMInsights</code></td><td>Safe defaults when the AI call fails</td></tr>
+            <tr><td><code>hydrateFromDb</code></td><td>On boot, reloads contracts/analyses/chunks from SQLite into memory</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="fnrefgroup">
+        <h4>backend/db.js</h4>
+        <p><code>init</code>, <code>isEnabled</code>, <code>saveContract</code>, <code>saveAnalysis</code>, <code>saveChunks</code>, <code>addChatMessage</code>, <code>saveVersion</code>, <code>deleteContract</code>, <code>getChatMessages</code>, <code>getVersions</code>, <code>getContractChunks</code>, <code>hydrateAll</code> — all become no-ops if SQLite is unavailable.</p>
+      </div>
+
+      <div class="fnrefgroup">
+        <h4>frontend/js/app.js — the important ones</h4>
+        <div class="tablewrap"><table>
+          <tbody>
+            <tr><td><code>render()</code></td><td>Rebuilds the whole page HTML from one <code>state</code> object — no framework, no diffing</td></tr>
+            <tr><td><code>renderUploadView</code> / <code>renderInvestorView</code> / <code>renderLegalView</code> / <code>renderPMView</code> / <code>renderPartnerView</code> / <code>renderChatView</code></td><td>The five role views plus chat</td></tr>
+            <tr><td><code>pollAnalysis</code></td><td>Polls the 202-until-ready analysis endpoint</td></tr>
+            <tr><td><code>streamChatMessageAPI</code></td><td>SSE client — falls back to non-streaming if no token ever arrives</td></tr>
+            <tr><td><code>handleSendChatMessage</code></td><td>Sends a chat turn, writes tokens into <code>streaming-msg-content</code> live</td></tr>
+            <tr><td><code>normalizeForQuoteMatch</code> / <code>findQuoteOffsetWithFallback</code></td><td>Client mirror of the server's verifyQuote normalization</td></tr>
+            <tr><td><code>revealCitation</code></td><td>Click a citation chip → open text panel → highlight the exact quote</td></tr>
+            <tr><td><code>escapeHtml</code></td><td>XSS protection on all AI/user text before it enters innerHTML</td></tr>
+            <tr><td><code>getChatHistory</code> / <code>openContract</code></td><td>Reload persisted chat when reopening a contract</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="fnrefgroup">
+        <h4>Tests — all deterministic, no network</h4>
+        <ul>
+          <li><code>test-retrieval.js</code> — 14 tests: tokenizer, BM25, RRF fusion, fallbacks</li>
+          <li><code>test-calculations.js</code> — 25 assertions: parsing, candidate filtering, grounding/dedup cases (hallucinated amount, reformatted amount, duplicate, two real same-amount fees)</li>
+          <li><code>test-chat-parse.js</code> — 41 assertions: answer parsing, quote verification, SSE chunk buffering, history sanitizing</li>
+          <li><code>npm run eval</code> — the retrieval benchmark, ~1s, offline</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="block" id="unique">
+      <div class="section-head"><span class="num">11</span><h2>What makes this project unique — your talking points</h2></div>
+      <ol class="points">
+        <li><span class="pn">1</span><div><b>Real RAG, built by hand.</b> BM25 written from the formula, local ONNX embeddings, RRF fusion. Not a LangChain wrapper — every line is explainable.</div></li>
+        <li><span class="pn">2</span><div><b>Verification everywhere.</b> Money figures are grounded against source text; chat quotes are verified or dropped. The AI never gets the final word on a fact.</div></li>
+        <li><span class="pn">3</span><div><b>Measured, not claimed.</b> A committed eval harness with a gold dataset and baseline numbers, including one result that doesn't favor the system — kept in, for honesty.</div></li>
+        <li><span class="pn">4</span><div><b>Graceful degradation as a philosophy.</b> Embedder fails → BM25-only. Index fails → keyword. SQLite fails → memory-only. OpenRouter rate-limited → NVIDIA NIM. One AI step fails → safe defaults plus a warning. The app never hard-crashes over a dependency.</div></li>
+        <li><span class="pn">5</span><div><b>Two-provider AI integration.</b> Automatic OpenRouter → NIM fallback with correct streaming semantics — never switch models mid-stream.</div></li>
+        <li><span class="pn">6</span><div><b>Local embeddings.</b> Zero cost, no rate limits on indexing, document content stays on the machine — a real privacy story for legal documents.</div></li>
+        <li><span class="pn">7</span><div><b>No vector database, on purpose.</b> A dot product over a few hundred pre-normalized 384-dim vectors is sub-millisecond. A vector DB would solve a scale problem this app doesn't have — knowing when not to add infrastructure is the point.</div></li>
+      </ol>
+    </section>
+
+    <section class="block" id="qa">
+      <div class="section-head"><span class="num">12</span><h2>Likely interview questions &amp; answers</h2></div>
+
+      <div class="qa"><p class="q">Why RAG instead of just sending the whole contract to the model?</p><p class="a">Three reasons. Cost — you pay per token, and a 50-page contract is huge. Context limits — small or free models have small windows. Quality — models get distracted by irrelevant text, the "lost in the middle" problem, so giving them only the 4–6 most relevant chunks sharpens the answer. Retrieval also gives exact source positions for verified, clickable citations — something you can't do from a single blob answer.</p></div>
+
+      <div class="qa"><p class="q">Why hybrid retrieval? Why not just embeddings?</p><p class="a">Contracts are full of exact strings — "$50,000," "Section 12.3," "Net-30" — that semantic search under-ranks because it matches meaning, not characters. BM25 nails exact terms; embeddings catch paraphrases like "cancel anytime" versus "terminate for convenience." RRF combines their rank lists so neither has to be right alone. The eval proves it: hybrid hit@4 is 95.8% versus 87.5% for either method alone.</p></div>
+
+      <div class="qa"><p class="q">Why RRF instead of a weighted score combination?</p><p class="a">BM25 and cosine scores sit on incompatible scales, which would need score normalization and a tuned weight. RRF only uses rank positions, so it needs no normalization and no tuning — and it's the standard, well-studied approach.</p></div>
+
+      <div class="qa"><p class="q">Why no vector database, like Pinecone?</p><p class="a">Scale. Each contract produces tens to a few hundred chunks. A brute-force dot product over pre-normalized vectors is sub-millisecond. A vector DB solves problems — millions of vectors, ANN search, cross-document search — that this project doesn't have. It would earn its keep if the search spanned thousands of contracts at once.</p></div>
+
+      <div class="qa"><p class="q">How do you stop the AI from hallucinating numbers?</p><p class="a">The AI never produces numbers on its own. JS regex extracts real candidates from the text; the AI only labels them risk or obligation; every labeled item must then match back to real source text — exact match, then amount-equality — or it's dropped and logged. All sums are plain JavaScript. Duplicate consumption also stops a restated fee from being counted twice.</p></div>
+
+      <div class="qa"><p class="q">How do citations work?</p><p class="a">The model returns quotes in a SOURCES section. Each quote is normalized — case, curly quotes, whitespace — and searched inside the equally normalized contract text, with an offset map back to original positions. If the full quote fails, it retries the first 8 words, since models tend to pad quote endings with invented text. If nothing matches, the quote is dropped, never shown. The matched offset powers click-to-highlight in the UI.</p></div>
+
+      <div class="qa"><p class="q">What was the hardest bug?</p><p class="a">The streaming abort. I used <code>req.on('close')</code> to abort the LLM call when the client disconnects — but in Express that event fires as soon as the request body finishes reading, so every stream got killed before the first token. Found it by logging inside the close handler, then switched to <code>res.on('close')</code> guarded by <code>res.writableEnded</code>.</p></div>
+
+      <div class="qa"><p class="q">How does the second AI provider work?</p><p class="a">An ordered <code>LLM_PROVIDERS</code> array — OpenRouter first, NVIDIA NIM second, only present if its key and model are configured. Both are OpenAI-API-compatible, so it's one code path with per-provider URL, key, and model. A 429 or 5xx skips straight to the next provider; for streaming, fallback only happens before the first token so the user never gets an answer stitched from two models. Verified live against real OpenRouter 429s.</p></div>
+
+      <div class="qa"><p class="q">What would you improve with more time?</p><p class="a">A paid model for reliable structured output; a bigger eval set, since 30 items shows direction, not significance; conversation summarization instead of a hard 8-turn truncation; a schema migration runner for SQLite; multi-currency handling, since mixed currencies currently sum face values; and auth/multi-user support for real deployment.</p></div>
+
+      <div class="qa"><p class="q">Why plain-text protocol for chat instead of JSON?</p><p class="a">Free and small models constantly break JSON when writing conversational prose — unescaped quotes, truncation. A fixed plain-text layout, answer / SOURCES: / IMPLICATIONS:, parsed tolerantly, is far more robust. JSON-mode is still used for the analysis calls, where the output is short and structured.</p></div>
+
+      <div class="qa"><p class="q">What's the frontend architecture?</p><p class="a">Deliberately zero-framework — one <code>state</code> object, and a <code>render()</code> that rebuilds the page HTML on every state change. One exception: streaming tokens write directly to a single DOM node, since re-rendering the whole page per token would be wasteful. All AI/user text passes through <code>escapeHtml</code> before touching innerHTML for XSS protection.</p></div>
+    </section>
+
+    <section class="block" id="limits">
+      <div class="section-head"><span class="num">13</span><h2>Honest limitations — say these before they ask</h2></div>
+      <ul class="limits">
+        <li>Free default model means 50 requests a day and flaky structured output — the NIM fallback mitigates the quota, a paid model would fix the quality.</li>
+        <li>MiniLM has a roughly 256-token input window — very long clauses lose some semantic (not lexical) context.</li>
+        <li>Mixed currencies are summed at face value, no FX conversion — documented, not silent.</li>
+        <li>A 30-item eval is directional evidence, not statistical proof.</li>
+        <li>Single-process, no auth, one SQLite file — a local/demo tool, not a deployed product.</li>
+      </ul>
+    </section>
+
+    <section class="block" id="numbers">
+      <div class="section-head"><span class="num">14</span><h2>Numbers to memorize</h2></div>
+      <div class="statgrid">
+        <div class="stat"><div class="label">Embeddings</div><div class="value">MiniLM, <b>384</b> dims, local ONNX, L2-normalized</div></div>
+        <div class="stat"><div class="label">BM25 params</div><div class="value">k1 = <b>1.5</b>, b = <b>0.75</b></div></div>
+        <div class="stat"><div class="label">RRF formula</div><div class="value">score = Σ 1/(<b>60</b> + rank)</div></div>
+        <div class="stat"><div class="label">Chunk size</div><div class="value">~<b>1000–1500</b> chars, ~<b>150–200</b> overlap</div></div>
+        <div class="stat"><div class="label">Retrieval top-k</div><div class="value"><b>6</b> chunks (4 for some analysis prompts)</div></div>
+        <div class="stat"><div class="label">Chat memory</div><div class="value">last <b>8</b> turns, <b>2000</b> chars/turn cap</div></div>
+        <div class="stat"><div class="label">Eval headline</div><div class="value">30 items, 3 fixtures — hybrid hit@4 <b>95.8%</b>, MRR <b>0.852</b> vs keyword 87.5% / 0.728</div></div>
+        <div class="stat"><div class="label">Tests</div><div class="value"><b>14 + 25 + 41</b> deterministic assertions, plus the ~1s offline eval</div></div>
+        <div class="stat"><div class="label">Duplicate flag</div><div class="value">&gt;<b>60%</b> Jaccard context overlap</div></div>
+        <div class="stat"><div class="label">Citation retry</div><div class="value">first <b>8 words</b> of a failed quote</div></div>
+      </div>
+    </section>
+
+    <footer>Generated from <code>docs/INTERVIEW_GUIDE.md</code>. Same content, formatted for reading and quick navigation before an interview.</footer>
+  </main>
+</div>
+
+<script>
+  (function () {
+    var toggle = document.getElementById('navtoggle');
+    var toc = document.getElementById('toc');
+    var scrim = document.getElementById('scrim');
+    function closeNav() { toc.classList.remove('open'); scrim.classList.remove('show'); toggle.setAttribute('aria-expanded', 'false'); }
+    function openNav() { toc.classList.add('open'); scrim.classList.add('show'); toggle.setAttribute('aria-expanded', 'true'); }
+    toggle.addEventListener('click', function () { toc.classList.contains('open') ? closeNav() : openNav(); });
+    scrim.addEventListener('click', closeNav);
+    toc.querySelectorAll('a').forEach(function (a) { a.addEventListener('click', closeNav); });
+
+    var links = Array.prototype.slice.call(toc.querySelectorAll('a'));
+    var sections = links.map(function (a) { return document.querySelector(a.getAttribute('href')); });
+    if ('IntersectionObserver' in window) {
+      var observer = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          var id = '#' + entry.target.id;
+          links.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === id); });
+        });
+      }, { rootMargin: '-15% 0px -70% 0px', threshold: 0 });
+      sections.forEach(function (s) { if (s) observer.observe(s); });
+    }
+  })();
+</script>
