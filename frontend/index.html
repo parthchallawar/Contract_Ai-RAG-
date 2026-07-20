@@ -408,6 +408,8 @@
 <body class="bg-paper text-ink min-h-screen">
     <div id="app"></div>
 
+    <!-- diff.js defines computeAnalysisDiff and must load before app.js uses it. -->
+    <script src="/js/diff.js"></script>
     <script src="/js/app.js"></script>
 </body>
 </html>

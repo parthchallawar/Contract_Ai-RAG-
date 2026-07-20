@@ -18,6 +18,9 @@ const state = {
     // Tab states for each view
     investorTab: 'insights', // insights, financial
     legalTab: 'analysis', // analysis, versioning
+    // Index into the normalized version list of the OLDER side of the diff;
+    // null = no comparison open. Lives in state so it survives render().
+    diffIndex: null,
     pmTab: 'operational', // operational, actionItems, contract
 };
 
@@ -522,6 +525,20 @@ async function updateContractRole(contractId, role) {
     } catch (error) {
         console.error('Error updating role:', error);
         throw error;
+    }
+}
+
+// GET /contracts returns a summary projection only (id, name, fileName,
+// uploadDate, fileSize, status) — no `versions`, `role`, or `originalName`.
+// Anything that needs version history must fetch the full record.
+async function getContract(contractId) {
+    try {
+        const response = await fetch(`${API_BASE}/contracts/${contractId}`);
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching contract:', error);
+        return null;
     }
 }
 
@@ -1186,40 +1203,49 @@ function renderLegalView() {
                 </div>
 
                 <div class="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
-                    ${state.legalTab === 'versioning' ? `
-                        <div class="text-center py-6">
-                            <div class="size-12 mx-auto mb-3 rounded-full bg-primary/10 flex items-center justify-center">
-                                <span class="material-symbols-outlined text-2xl text-primary">history</span>
+                    ${state.legalTab === 'versioning' ? (() => {
+                        const versions = normalizedVersionList();
+                        return `
+                        <div class="py-2">
+                            <div class="flex items-center justify-between gap-3 mb-4">
+                                <div class="flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-primary text-xl">history</span>
+                                    <h3 class="font-display text-md font-bold text-ink">Version History</h3>
+                                </div>
+                                <button class="px-3 py-1.5 bg-primary text-white text-[11px] font-bold rounded-lg shadow-sm hover:bg-primary/90 transition-all shrink-0" onclick="document.getElementById('versionInput').click()">
+                                    Upload New Version
+                                </button>
                             </div>
-                            <h3 class="font-display text-md font-bold text-ink mb-2">Contract Version History</h3>
-                            <button class="px-6 py-2 mb-4 bg-primary text-white text-xs font-bold rounded-lg shadow-sm hover:bg-primary/90 transition-all" onclick="document.getElementById('versionInput').click()">
-                                Upload New Version
-                            </button>
                             <input type="file" id="versionInput" class="hidden" accept=".pdf,.doc,.docx,.txt" onchange="handleVersionSelected(event)">
 
-                            <div class="space-y-3 mt-4 text-left">
-                                <!-- Current Active Version -->
-                                <div class="flex items-center gap-4 p-4 bg-surface rounded-lg border border-line ring-1 ring-brass/30">
-                                    <div class="size-10 rounded-full bg-ink text-white flex items-center justify-center text-xs font-bold">v${(state.currentContract.versions?.length || 0) + 1}</div>
-                                    <div class="text-left flex-1 min-w-0">
-                                        <p class="text-sm font-bold text-primary truncate">${escapeHtml(state.currentContract.originalName || state.currentContract.name)}</p>
-                                        <p class="text-xs text-muted">Current active version • ${formatDate(state.currentContract.uploadDate || new Date().toISOString())}</p>
-                                    </div>
-                                </div>
+                            ${versions.length < 2 ? `
+                                <p class="text-xs text-muted italic mb-3">Only one version so far. Upload a revised copy to compare what changed between them.</p>
+                            ` : ''}
 
-                                <!-- Historical Versions -->
-                                ${(state.currentContract.versions || []).slice().reverse().map(v => `
-                                    <div class="flex items-center gap-4 p-4 bg-surface rounded-lg border border-line opacity-70 hover:opacity-100 transition-opacity">
-                                        <div class="size-10 rounded-full bg-paper border border-line text-muted flex items-center justify-center text-xs font-bold">v${v.version}</div>
-                                        <div class="text-left flex-1 min-w-0">
-                                            <p class="text-sm font-bold truncate text-ink">${escapeHtml(v.originalName || v.name)}</p>
-                                            <p class="text-xs text-muted">Superseded • ${formatDate(v.uploadDate)}</p>
+                            <div class="space-y-2">
+                                ${versions.slice().reverse().map((v) => {
+                                    // Index of the OLDER side of the pair this row can start.
+                                    const olderIndex = versions.findIndex(x => x.version === v.version) - 1;
+                                    const canCompare = olderIndex >= 0;
+                                    return `
+                                    <div class="flex items-center gap-3 p-3 bg-surface rounded-lg border ${v.isCurrent ? 'border-line ring-1 ring-brass/30' : 'border-line'}">
+                                        <div class="size-9 rounded-full ${v.isCurrent ? 'bg-ink text-white' : 'bg-paper border border-line text-muted'} flex items-center justify-center text-[11px] font-bold shrink-0">v${v.version}</div>
+                                        <div class="flex-1 min-w-0">
+                                            <p class="text-sm font-bold truncate ${v.isCurrent ? 'text-primary' : 'text-ink'}">${escapeHtml(v.label)}</p>
+                                            <p class="text-xs text-muted">${v.isCurrent ? 'Current active version' : 'Superseded'} • ${formatDate(v.uploadDate)}</p>
                                         </div>
-                                    </div>
-                                `).join('')}
+                                        ${canCompare ? `
+                                            <button class="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded border border-line text-muted hover:text-primary hover:border-primary transition-colors" title="Compare with the previous version" onclick="showVersionDiff(${olderIndex})">
+                                                Compare v${versions[olderIndex].version}→v${v.version}
+                                            </button>
+                                        ` : ''}
+                                    </div>`;
+                                }).join('')}
                             </div>
+
+                            ${renderVersionDiffPanel()}
                         </div>
-                    ` : `
+                    `; })() : `
                         <!-- Compliance Checks -->
                         <div>
                             <h4 class="text-[11px] font-semibold text-muted uppercase tracking-wider mb-3">
@@ -1619,6 +1645,178 @@ function copyChatMessage(index) {
 }
 
 // ---------------------------------------------------------------------------
+// Version comparison
+// ---------------------------------------------------------------------------
+
+// The live contract is NOT an entry in contract.versions[] — that array only
+// holds superseded snapshots. Normalize both into one ordered list so the diff
+// can treat "v3 (current)" like any other version.
+function normalizedVersionList() {
+    const contract = state.currentContract;
+    if (!contract) return [];
+    const prior = Array.isArray(contract.versions) ? contract.versions : [];
+    const list = prior.map((v) => ({
+        version: v.version,
+        label: v.originalName || v.name,
+        uploadDate: v.uploadDate,
+        analysis: v.analysis,
+        isCurrent: false,
+    }));
+    list.push({
+        version: prior.length + 1,
+        label: contract.originalName || contract.name,
+        uploadDate: contract.uploadDate,
+        analysis: state.currentAnalysis,
+        isCurrent: true,
+    });
+    return list;
+}
+
+function showVersionDiff(index) {
+    state.diffIndex = index;
+    render();
+}
+
+function closeVersionDiff() {
+    state.diffIndex = null;
+    render();
+}
+
+function formatDiffValue(scalar, side) {
+    const value = scalar[side];
+    if (value === null || value === undefined || value === '') return 'Not determined';
+    if (scalar.money) return displayMoney(Number(value));
+    if (scalar.percent) {
+        const n = Number(value);
+        return Number.isFinite(n) ? `${Math.round(n * 100)}%` : 'Not determined';
+    }
+    if (scalar.suffix) {
+        const n = Number(value);
+        return Number.isFinite(n) ? `${n}${scalar.suffix}` : escapeHtml(String(value));
+    }
+    return escapeHtml(String(value));
+}
+
+// Arrow + color for a scalar delta. `higherIsWorse` decides whether a rise is
+// red or green — a rising exposure is bad, a rising compliance score is good.
+function diffDirectionMark(scalar) {
+    switch (scalar.direction) {
+        case 'up':
+            return { icon: 'arrow_upward', cls: scalar.higherIsWorse ? 'text-[#B3362B]' : 'text-[#1E7F5C]' };
+        case 'down':
+            return { icon: 'arrow_downward', cls: scalar.higherIsWorse ? 'text-[#1E7F5C]' : 'text-[#B3362B]' };
+        case 'appeared':
+            return { icon: 'add', cls: 'text-muted' };
+        case 'disappeared':
+            return { icon: 'remove', cls: 'text-muted' };
+        case 'changed':
+            return { icon: 'sync_alt', cls: 'text-[#B45309]' };
+        default:
+            return { icon: 'drag_handle', cls: 'text-muted' };
+    }
+}
+
+const DIFF_GROUP_LABELS = {
+    enforceabilityRisks: 'Enforceability risks',
+    complianceChecks: 'Compliance checks',
+    risks: 'Monetary risks',
+    obligations: 'Obligations',
+    rates: 'Rates',
+    insuranceRequirements: 'Insurance requirements',
+    deliverables: 'Deliverables',
+    timelines: 'Timeline events',
+};
+
+// One-line description of an item in any of the diffed arrays.
+function diffItemLabel(item) {
+    if (!item || typeof item !== 'object') return '—';
+    if (item.title) return item.title;
+    if (item.name) return item.name;
+    if (item.event) return item.event;
+    if (item.raw) return `${item.raw}${item.reason ? ` — ${item.reason}` : ''}`;
+    return '—';
+}
+
+function renderDiffItemRow(item, kind) {
+    const tone = kind === 'added' ? 'text-[#1E7F5C]' : (kind === 'removed' ? 'text-[#B3362B]' : 'text-[#B45309]');
+    const sign = kind === 'added' ? '+' : (kind === 'removed' ? '−' : '~');
+    return `
+        <div class="flex items-start gap-2 py-1">
+            <span class="text-xs font-black ${tone} w-3 shrink-0">${sign}</span>
+            <span class="text-xs text-ink">${escapeHtml(diffItemLabel(item))}</span>
+        </div>`;
+}
+
+function renderVersionDiffPanel() {
+    const versions = normalizedVersionList();
+    const i = state.diffIndex;
+    if (i === null || i < 0 || i + 1 >= versions.length) return '';
+
+    const older = versions[i];
+    const newer = versions[i + 1];
+    const diff = computeAnalysisDiff(older.analysis, newer.analysis);
+
+    const header = `
+        <div class="flex items-center justify-between gap-3 mb-3">
+            <div class="min-w-0">
+                ${sectionLabel(`Comparing v${older.version} → v${newer.version}${newer.isCurrent ? ' (current)' : ''}`)}
+                <p class="text-[11px] text-muted truncate">${escapeHtml(older.label)} → ${escapeHtml(newer.label)}</p>
+            </div>
+            <button class="text-xs font-semibold text-muted hover:text-ink shrink-0" onclick="closeVersionDiff()">Close</button>
+        </div>`;
+
+    if (!diff.ok) {
+        return card(`<div class="p-4">${header}
+            <p class="text-xs text-muted italic">${escapeHtml(diff.reason)} A version uploaded while an analysis was still running has no snapshot to compare.</p>
+        </div>`, 'mt-3');
+    }
+
+    if (!diff.summary.hasChanges) {
+        return card(`<div class="p-4">${header}
+            <p class="text-xs text-muted italic">No differences detected between these two analyses.</p>
+        </div>`, 'mt-3');
+    }
+
+    const scalarRows = diff.scalars.filter((s) => s.direction !== 'same').map((s) => {
+        const mark = diffDirectionMark(s);
+        return `
+            <div class="flex items-center justify-between gap-3 py-1.5 border-b border-line/60">
+                <span class="text-xs text-muted">${escapeHtml(s.label)}</span>
+                <span class="flex items-center gap-2 text-xs">
+                    <span class="text-muted figures">${formatDiffValue(s, 'before')}</span>
+                    <span class="material-symbols-outlined text-[14px] ${mark.cls}">${mark.icon}</span>
+                    <span class="font-bold text-ink figures">${formatDiffValue(s, 'after')}</span>
+                </span>
+            </div>`;
+    }).join('');
+
+    const groupBlocks = Object.entries(diff.arrays).map(([key, group]) => {
+        const total = group.added.length + group.removed.length + group.changed.length;
+        if (total === 0) return '';
+        return `
+            <div class="mt-3">
+                <p class="text-[10px] font-bold uppercase tracking-wider text-muted mb-1">${escapeHtml(DIFF_GROUP_LABELS[key] || key)}</p>
+                ${group.added.map((it) => renderDiffItemRow(it, 'added')).join('')}
+                ${group.removed.map((it) => renderDiffItemRow(it, 'removed')).join('')}
+                ${group.changed.map((c) => renderDiffItemRow(c.after, 'changed')).join('')}
+            </div>`;
+    }).join('');
+
+    return card(`
+        <div class="p-4">
+            ${header}
+            <div class="flex gap-3 mb-3 text-[11px]">
+                <span class="text-[#1E7F5C] font-bold">+${diff.summary.added} added</span>
+                <span class="text-[#B3362B] font-bold">−${diff.summary.removed} removed</span>
+                <span class="text-[#B45309] font-bold">~${diff.summary.changed} changed</span>
+            </div>
+            ${scalarRows ? `<div class="mb-1">${scalarRows}</div>` : ''}
+            ${groupBlocks}
+        </div>
+    `, 'mt-3');
+}
+
+// ---------------------------------------------------------------------------
 // Export / print report
 // ---------------------------------------------------------------------------
 
@@ -1948,13 +2146,16 @@ async function handleVersionSelected(event) {
             render();
             const result = await uploadNewVersionAPI(state.currentContract.id, file);
 
-            // update local state
-            const contractIndex = state.contracts.findIndex(c => c.id === result.id);
+            // The version route returns the full contract (including the newly
+            // pushed versions[]); drop the heavy text/index fields we never read.
+            const { text, index, ...contractRecord } = result;
+            const contractIndex = state.contracts.findIndex(c => c.id === contractRecord.id);
             if (contractIndex !== -1) {
-                state.contracts[contractIndex] = result;
+                state.contracts[contractIndex] = contractRecord;
             }
-            state.currentContract = result;
+            state.currentContract = contractRecord;
             resetExtractedTextState();
+            state.diffIndex = null; // version numbering shifted; any open diff is stale
 
             // Poll for new analysis
             pollAnalysis(result.id, (analysis) => {
@@ -2027,9 +2228,25 @@ async function openContract(contractId) {
         state.currentContract = contract;
         resetExtractedTextState();
         state.highlightQuote = null;
+        state.diffIndex = null; // stale index would point into another contract's versions
         if (contract.role) {
             state.selectedRole = contract.role;
         }
+
+        // state.contracts holds the summary projection from GET /contracts,
+        // which omits versions/role/originalName. Fetch the full record so the
+        // Versioning tab has real history. Non-blocking: the analysis poll
+        // below starts either way, and a failure just leaves the summary.
+        getContract(contractId).then((full) => {
+            if (!full || state.currentContract?.id !== contractId) return;
+            // Drop the heavy fields the UI never reads — the raw text is loaded
+            // on demand by loadExtractedText(), and `index` carries chunk
+            // embeddings we have no use for client-side.
+            const { text, index, ...rest } = full;
+            state.currentContract = rest;
+            if (rest.role) state.selectedRole = rest.role;
+            render();
+        });
 
         // Phase 4: load this contract's persisted conversation instead of
         // always starting empty. Set before render() so the loading view
