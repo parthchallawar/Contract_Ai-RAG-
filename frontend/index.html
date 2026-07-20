@@ -7,6 +7,17 @@
          ground regardless of the OS/browser dark-mode preference, so the
          served .txt/.pdf preview never inverts to a black background. -->
     <meta name="color-scheme" content="light">
+    <!-- Apply the saved theme before first paint so there's no light->dark flash. -->
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('theme');
+                if (t === 'dark' || t === 'light') {
+                    document.documentElement.setAttribute('data-theme', t);
+                }
+            } catch (e) {}
+        })();
+    </script>
     <title>Contract Analysis</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%23C9A227' stroke-width='2'/%3E%3Cpath d='M10 16.5l4 4 8-9' fill='none' stroke='%232C4F7C' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
     <script src="/vendor/tailwind.js"></script>
@@ -18,19 +29,22 @@
             theme: {
                 extend: {
                     colors: {
-                        "ink": "#16222E",
-                        "primary": "#1E3A6E",
-                        "primary-600": "#2A4C86",
-                        "brass": "#A97A22",
-                        "paper": "#F4F6F9",
-                        "surface": "#FFFFFF",
-                        "surface2": "#FAFBFD",
-                        "muted": "#566472",
-                        "line": "#E3E8EF",
-                        "line-strong": "#CDD6E0",
-                        "critical": "#B3362B",
-                        "caution": "#B57F14",
-                        "clear": "#2E7D5B",
+                        // Tokens resolve to CSS vars (RGB channels) so a single
+                        // [data-theme] switch reskins the whole app, and Tailwind
+                        // opacity modifiers (bg-primary/10) still work via <alpha-value>.
+                        "ink": "rgb(var(--c-ink) / <alpha-value>)",
+                        "primary": "rgb(var(--c-primary) / <alpha-value>)",
+                        "primary-600": "rgb(var(--c-primary-600) / <alpha-value>)",
+                        "brass": "rgb(var(--c-brass) / <alpha-value>)",
+                        "paper": "rgb(var(--c-paper) / <alpha-value>)",
+                        "surface": "rgb(var(--c-surface) / <alpha-value>)",
+                        "surface2": "rgb(var(--c-surface2) / <alpha-value>)",
+                        "muted": "rgb(var(--c-muted) / <alpha-value>)",
+                        "line": "rgb(var(--c-line) / <alpha-value>)",
+                        "line-strong": "rgb(var(--c-line-strong) / <alpha-value>)",
+                        "critical": "rgb(var(--c-critical) / <alpha-value>)",
+                        "caution": "rgb(var(--c-caution) / <alpha-value>)",
+                        "clear": "rgb(var(--c-clear) / <alpha-value>)",
                     },
                     fontFamily: {
                         "display": ["Source Serif 4", "Georgia", "serif"],
@@ -47,6 +61,40 @@
         }
     </script>
     <style>
+        /* ===== Theme tokens (RGB channels) — light is the default on :root,
+           dark overrides only the values under [data-theme="dark"]. ===== */
+        :root {
+            --c-ink: 22 34 46;
+            --c-primary: 30 58 110;
+            --c-primary-600: 42 76 134;
+            --c-brass: 169 122 34;
+            --c-brass-strong: 138 100 20;
+            --c-paper: 244 246 249;
+            --c-surface: 255 255 255;
+            --c-surface2: 250 251 253;
+            --c-muted: 86 100 114;
+            --c-line: 227 232 239;
+            --c-line-strong: 205 214 224;
+            --c-critical: 179 54 43;
+            --c-caution: 181 127 20;
+            --c-clear: 46 125 91;
+        }
+        :root[data-theme="dark"] {
+            --c-ink: 232 237 243;
+            --c-primary: 122 165 227;
+            --c-primary-600: 150 185 235;
+            --c-brass: 217 179 100;
+            --c-brass-strong: 217 179 100;
+            --c-paper: 14 22 33;
+            --c-surface: 22 32 45;
+            --c-surface2: 17 27 38;
+            --c-muted: 155 173 191;
+            --c-line: 38 52 68;
+            --c-line-strong: 52 70 90;
+            --c-critical: 232 135 125;
+            --c-caution: 224 180 92;
+            --c-clear: 111 196 154;
+        }
         html, body {
             height: 100%;
             margin: 0;
@@ -89,9 +137,9 @@
             display: inline-flex;
             align-items: center;
             gap: 0.25rem;
-            border: 1px solid #A97A22;
-            color: #8A6414;
-            background: rgba(169, 122, 34, 0.1);
+            border: 1px solid rgb(var(--c-brass));
+            color: rgb(var(--c-brass-strong));
+            background: rgb(var(--c-brass) / 0.12);
             border-radius: 9999px;
             padding: 0.12rem 0.5rem;
             font-size: 10px;
@@ -135,62 +183,82 @@
         .stat-tile { transition: box-shadow .18s ease, transform .18s ease; }
         .stat-tile:hover { box-shadow: 0 1px 2px rgba(22,34,46,.06), 0 10px 26px -14px rgba(22,34,46,.28); transform: translateY(-1px); }
 
-        /* ============ Demo-fidelity component system ============ */
-        /* Header brand mark — navy rounded square holding the logo glyph. */
+        /* ============ Demo-fidelity component system (theme-aware) ============ */
+        /* Header brand mark — navy rounded square holding the logo glyph (stays
+           deep navy in both themes so the white/brass glyph always reads). */
         .brand-mark {
             width: 34px; height: 34px; border-radius: 9px;
             background: #1E3A6E; display: grid; place-items: center;
             box-shadow: inset 0 0 0 1px rgba(255,255,255,.12);
             color: #fff;
         }
-        /* Header nav pills — active = navy text on a navy tint chip. */
+        /* Header nav pills — active = accent text on an accent tint chip. */
         .nav-pill {
             padding: 8px 13px; border-radius: 8px; font-size: 13.5px; font-weight: 500;
-            color: #566472; transition: background .15s, color .15s; cursor: pointer;
+            color: rgb(var(--c-muted)); transition: background .15s, color .15s; cursor: pointer;
         }
-        .nav-pill:hover { color: #16222E; background: #FAFBFD; }
-        .nav-pill.on { color: #1E3A6E; background: #EAF0FA; font-weight: 600; }
+        .nav-pill:hover { color: rgb(var(--c-ink)); background: rgb(var(--c-surface2)); }
+        .nav-pill.on { color: rgb(var(--c-primary)); background: rgb(var(--c-primary) / 0.13); font-weight: 600; }
         /* File pill on the right of the bar. */
         .file-pill {
             display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px;
-            border: 1px solid #E3E8EF; border-radius: 999px; background: #FAFBFD;
-            font-size: 12.5px; font-weight: 500;
+            border: 1px solid rgb(var(--c-line)); border-radius: 999px; background: rgb(var(--c-surface2));
+            font-size: 12.5px; font-weight: 500; color: rgb(var(--c-ink));
         }
-        .live-dot { width: 7px; height: 7px; border-radius: 50%; background: #2E7D5B; box-shadow: 0 0 0 3px #E5F3EC; }
+        .live-dot { width: 7px; height: 7px; border-radius: 50%; background: rgb(var(--c-clear)); box-shadow: 0 0 0 3px rgb(var(--c-clear) / 0.2); }
+        /* Theme toggle button. */
+        .theme-toggle {
+            width: 34px; height: 34px; border-radius: 8px; border: 1px solid rgb(var(--c-line));
+            display: grid; place-items: center; color: rgb(var(--c-muted));
+            background: rgb(var(--c-surface2)); cursor: pointer; transition: color .15s, border-color .15s;
+        }
+        .theme-toggle:hover { color: rgb(var(--c-ink)); border-color: rgb(var(--c-line-strong)); }
 
         /* Panel — the rounded, shadowed surface the demo used everywhere. */
-        .panel { background: #fff; border: 1px solid #E3E8EF; border-radius: 12px;
+        .panel { background: rgb(var(--c-surface)); border: 1px solid rgb(var(--c-line)); border-radius: 12px;
             box-shadow: 0 1px 2px rgba(22,34,46,.05), 0 8px 24px -14px rgba(22,34,46,.18); overflow: hidden; }
         .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px;
-            padding: 13px 16px; border-bottom: 1px solid #E3E8EF; }
+            padding: 13px 16px; border-bottom: 1px solid rgb(var(--c-line)); }
         .panel-head h3 { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; margin: 0; }
 
         /* Risk / obligation rows — grouped ledger rows with a quote block. */
         .risk-group { font-size: 10px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase;
-            color: #8A98A6; margin: 6px 2px 9px; display: flex; align-items: center; gap: 8px; }
-        .risk-group::after { content: ""; flex: 1; height: 1px; background: #E3E8EF; }
-        .risk-row { display: flex; gap: 10px; padding: 11px; border: 1px solid #E3E8EF; border-radius: 9px;
-            margin-bottom: 9px; background: #fff; transition: box-shadow .15s ease; }
+            color: rgb(var(--c-muted)); margin: 6px 2px 9px; display: flex; align-items: center; gap: 8px; }
+        .risk-group::after { content: ""; flex: 1; height: 1px; background: rgb(var(--c-line)); }
+        .risk-row { display: flex; gap: 10px; padding: 11px; border: 1px solid rgb(var(--c-line)); border-radius: 9px;
+            margin-bottom: 9px; background: rgb(var(--c-surface)); transition: box-shadow .15s ease; }
         .risk-row:hover { box-shadow: 0 6px 18px -12px rgba(22,34,46,.3); }
-        .risk-row.crit { background: #FBEBE9; border-color: rgba(179,54,43,.24); }
+        .risk-row.crit { background: rgb(var(--c-critical) / 0.1); border-color: rgb(var(--c-critical) / 0.3); }
         .risk-row .rr-body { min-width: 0; flex: 1; }
-        .risk-row .rr-title { font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 6px; color: #16222E; }
-        .risk-row .rr-meta { font-size: 11.5px; color: #566472; margin-top: 3px; line-height: 1.45; }
+        .risk-row .rr-title { font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 6px; color: rgb(var(--c-ink)); }
+        .risk-row .rr-meta { font-size: 11.5px; color: rgb(var(--c-muted)); margin-top: 3px; line-height: 1.45; }
         .risk-row .rr-amt { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 13px; white-space: nowrap; }
-        .rr-amt.crit { color: #B3362B; }
-        .rr-amt.navy { color: #1E3A6E; }
+        .rr-amt.crit { color: rgb(var(--c-critical)); }
+        .rr-amt.navy { color: rgb(var(--c-primary)); }
+        /* Severity chips keep fixed dark-tone backgrounds so white text always
+           reads, on either theme. */
         .sev-chip { font-size: 9.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
             padding: 1.5px 6px; border-radius: 4px; color: #fff; }
         .sev-chip.crit { background: #B3362B; }
         .sev-chip.caution { background: #B57F14; }
         .sev-chip.navy { background: #1E3A6E; }
-        .quote-block { font-style: italic; color: #566472; font-size: 11px; background: #FAFBFD;
-            border-left: 2px solid #A97A22; padding: 6px 9px; border-radius: 0 5px 5px 0; margin-top: 6px;
+        .quote-block { font-style: italic; color: rgb(var(--c-muted)); font-size: 11px; background: rgb(var(--c-surface2));
+            border-left: 2px solid rgb(var(--c-brass)); padding: 6px 9px; border-radius: 0 5px 5px 0; margin-top: 6px;
             font-family: "Source Serif 4", Georgia, serif; }
 
         /* Document frame — the "paper" wrapper around the real file. */
-        .doc-frame { background: #fff; border: 1px solid #E3E8EF; border-radius: 8px;
+        .doc-frame { background: rgb(var(--c-surface)); border: 1px solid rgb(var(--c-line)); border-radius: 8px;
             box-shadow: 0 4px 18px -10px rgba(22,34,46,.22); overflow: hidden; }
+
+        /* Dark-mode fixes for dual-role / fixed utilities the token swap can't
+           reach: bg-ink is a dark fill (must stay dark so its white text shows),
+           and solid bg-primary fills need a deeper navy than the light accent. */
+        :root[data-theme="dark"] .bg-ink { background-color: #0C141D !important; }
+        :root[data-theme="dark"] .bg-primary { background-color: #2E5488 !important; }
+        :root[data-theme="dark"] .hover\:bg-primary\/90:hover { background-color: #35619B !important; }
+        /* The real-file preview renders on white (color-scheme:light); give it a
+           soft frame in dark mode so a white page doesn't sit on near-black. */
+        :root[data-theme="dark"] .document-paper { box-shadow: 0 0 0 1px rgb(var(--c-line)), 0 8px 24px -12px rgba(0,0,0,.5); }
         .custom-scrollbar::-webkit-scrollbar {
             width: 6px;
         }
@@ -198,18 +266,18 @@
             background: transparent;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #DFE5EC;
+            background: rgb(var(--c-line-strong));
             border-radius: 10px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: #5B6B7C;
+            background: rgb(var(--c-muted));
         }
         .document-paper {
             box-shadow: 0 4px 6px -1px rgb(22 35 46 / 0.08), 0 2px 4px -2px rgb(22 35 46 / 0.08);
         }
         .loading-spinner {
-            border: 3px solid #DFE5EC;
-            border-top: 3px solid #2C4F7C;
+            border: 3px solid rgb(var(--c-line));
+            border-top: 3px solid rgb(var(--c-primary));
             border-radius: 50%;
             width: 24px;
             height: 24px;

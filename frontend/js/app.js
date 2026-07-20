@@ -37,6 +37,19 @@ function switchPMTab(tab) {
     render();
 }
 
+// Light/dark theme toggle. The initial theme is applied pre-paint by an inline
+// script in index.html; this flips it, persists the choice, and re-renders so
+// the header icon reflects the new state. All colors are CSS-var tokens, so the
+// switch reskins every view without touching markup.
+function toggleTheme() {
+    const root = document.documentElement;
+    const current = root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    const next = current === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('theme', next); } catch (e) {}
+    render();
+}
+
 // Phase 2: toggles a pre-rendered source-snippet row without a full re-render
 // (safe with the innerHTML render model — no state change, just a class flip).
 function toggleSourceRow(id) {
@@ -583,6 +596,7 @@ async function pollAnalysis(contractId, callback) {
 
 // View Renderers
 function renderHeader() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     const navLinks = {
         upload: { text: 'Upload', active: state.currentView === 'upload' },
         investor: { text: 'Investor View', active: state.currentView === 'investor' },
@@ -618,6 +632,9 @@ function renderHeader() {
                         <span class="text-ink truncate max-w-[220px]">${escapeHtml(state.currentContract.name)}</span>
                     </span>
                 ` : ''}
+                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light / dark theme" aria-label="Toggle light or dark theme">
+                    <span class="material-symbols-outlined text-[19px]">${isDark ? 'light_mode' : 'dark_mode'}</span>
+                </button>
             </div>
         </header>
     `;
