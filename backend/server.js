@@ -124,6 +124,65 @@ app.get('/api/contracts', (req, res) => {
   res.json(contractList);
 });
 
+// Portfolio rollup across every contract. Reads the in-memory `analyses` Map
+// that the routes already serve from — no DB query, no LLM, no new state.
+//
+// MUST stay registered ABOVE `/api/contracts/:id`, or Express matches
+// "summary" as an :id and this returns 404 Contract not found.
+//
+// Honesty rule: a contract without a completed analysis emits nulls, never 0.
+// The client renders those as "pending", and every total below is explicitly
+// scoped to the contracts that actually contributed.
+app.get('/api/contracts/summary', (req, res) => {
+  const rows = Array.from(contracts.values()).map((c) => {
+    const analysis = analyses.get(c.id);
+    const nf = analysis?.numericFigures || {};
+    const hasAnalysis = Boolean(analysis) && c.status === 'completed';
+
+    return {
+      id: c.id,
+      name: c.name,
+      originalName: c.originalName || c.name,
+      uploadDate: c.uploadDate,
+      fileSize: c.fileSize,
+      status: c.status,
+      role: c.role || null,
+      versionCount: (c.versions?.length || 0) + 1,
+      hasAnalysis,
+      totalPotentialLoss: hasAnalysis && Number.isFinite(nf.totalPotentialLoss) ? nf.totalPotentialLoss : null,
+      totalAmountOwed: hasAnalysis && Number.isFinite(nf.totalAmountOwed) ? nf.totalAmountOwed : null,
+      lgdScore: hasAnalysis && Number.isFinite(analysis.lgdScore) ? analysis.lgdScore : null,
+      complianceScore: hasAnalysis && Number.isFinite(analysis.complianceScore) ? analysis.complianceScore : null,
+      overallRisk: hasAnalysis ? (analysis.overallRisk || null) : null,
+      riskCount: hasAnalysis ? (analysis.enforceabilityRisks?.length || 0) : null,
+      warningCount: hasAnalysis ? (analysis.analysisWarnings?.length || 0) : null,
+      groundingRate: hasAnalysis && Number.isFinite(analysis.calculations?.grounding?.rate)
+        ? analysis.calculations.grounding.rate
+        : null,
+    };
+  });
+
+  const analyzed = rows.filter((r) => r.hasAnalysis);
+  const sumOf = (key) => analyzed.reduce((total, r) => total + (Number.isFinite(r[key]) ? r[key] : 0), 0);
+  const groundingValues = analyzed.map((r) => r.groundingRate).filter((v) => Number.isFinite(v));
+
+  res.json({
+    contracts: rows,
+    totals: {
+      contractCount: rows.length,
+      analyzedCount: analyzed.length,
+      pendingCount: rows.filter((r) => r.status === 'analyzing').length,
+      errorCount: rows.filter((r) => r.status === 'error').length,
+      totalPotentialLoss: analyzed.length > 0 ? sumOf('totalPotentialLoss') : null,
+      totalAmountOwed: analyzed.length > 0 ? sumOf('totalAmountOwed') : null,
+      averageGroundingRate: groundingValues.length > 0
+        ? groundingValues.reduce((a, b) => a + b, 0) / groundingValues.length
+        : null,
+      contractsWithWarnings: analyzed.filter((r) => r.warningCount > 0).length,
+    },
+  });
+});
+
 // Get a specific contract
 app.get('/api/contracts/:id', (req, res) => {
   const contract = contracts.get(req.params.id);
@@ -1760,9 +1819,20 @@ async function analyzeDocumentText(text, contract) {
   const llmExposure = await selectMonetaryExposureWithLLM(monetaryCandidates);
 
   const totalExposureValue = llmExposure?.totalPotentialLoss || 0;
-  const financialExposure = totalExposureValue > 0 ? formatNumber(totalExposureValue) : 'Not mentioned in the contract';
   const exposureSource = llmExposure ? 'llm-monetary-sum' : 'none';
-  console.log(`${logPrefix} Monetary analysis complete. Exposure: ${financialExposure}`);
+
+  // How many amounts the LLM actually classified, across every category.
+  const classifiedCount = ['risks', 'obligations', 'rates', 'insuranceRequirements']
+    .reduce((n, key) => n + ((llmExposure && llmExposure[key]) ? llmExposure[key].length : 0), 0);
+  // The deterministic scanner found money in the text but the model classified
+  // none of it. Saying "not mentioned" here would be a plain falsehood — the
+  // amounts ARE in the document, we just failed to categorize them.
+  const unclassifiedMoney = classifiedCount === 0 && monetaryCandidates.length > 0;
+
+  const financialExposure = totalExposureValue > 0
+    ? formatNumber(totalExposureValue)
+    : (unclassifiedMoney ? 'Not determined' : 'Not mentioned in the contract');
+  console.log(`${logPrefix} Monetary analysis complete. Exposure: ${financialExposure}${unclassifiedMoney ? ` (WARNING: ${monetaryCandidates.length} candidate amount(s) found in text but none classified)` : ''}`);
 
   const riskSignals = extractRiskSignals(text);
   const terminationMatch = riskSignals.hasTerminationForConvenience ? 'High' : 'Low';
@@ -1779,6 +1849,17 @@ async function analyzeDocumentText(text, contract) {
   const monetaryGrounding = llmExposure?.grounding || { total: 0, grounded: 0, dropped: 0, rate: 1 };
   if (monetaryGrounding.dropped > 0) {
     analysisWarnings.push(`${monetaryGrounding.dropped} monetary figure(s) from the AI were rejected (not found in source text).`);
+  }
+
+  // The most important warning in the pipeline: the regex scanner located
+  // amounts the model then failed to classify, so every monetary figure in
+  // this analysis is missing. Without this the UI shows an empty exposure that
+  // is indistinguishable from a contract that genuinely has no amounts.
+  if (unclassifiedMoney) {
+    analysisWarnings.push(
+      `${monetaryCandidates.length} monetary amount(s) were found in the contract text but the AI classified none of them. ` +
+      `Financial figures are incomplete for this analysis — verify against the document directly.`
+    );
   }
 
   // Phase 1: which retrieval mode fed the RAG calls (additive field — the

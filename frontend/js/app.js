@@ -21,6 +21,10 @@ const state = {
     // Index into the normalized version list of the OLDER side of the diff;
     // null = no comparison open. Lives in state so it survives render().
     diffIndex: null,
+    // Portfolio dashboard
+    portfolio: null,          // { contracts: [], totals: {} } | null
+    portfolioLoading: false,
+    portfolioSort: 'exposure', // exposure | risk | name | date
     pmTab: 'operational', // operational, actionItems, contract
 };
 
@@ -102,6 +106,25 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+// Surfaces analysisWarnings at the top of every analysis view. These record
+// where the pipeline degraded (RAG unavailable, items rejected as ungrounded,
+// amounts found but unclassified). Previously they were only visible in the
+// exported report, so a silently-incomplete analysis looked complete on screen.
+function renderAnalysisWarnings(analysisObj) {
+    const warnings = Array.isArray(analysisObj?.analysisWarnings) ? analysisObj.analysisWarnings : [];
+    if (warnings.length === 0) return '';
+    return `
+        <div class="shrink-0 flex items-start gap-2.5 px-4 py-2.5 rounded-lg border border-[#B45309]/35 bg-[#B45309]/8">
+            <span class="material-symbols-outlined text-[#B45309] text-[18px] shrink-0">warning</span>
+            <div class="min-w-0">
+                <p class="text-[11px] font-bold uppercase tracking-wider text-[#B45309]">Analysis is incomplete</p>
+                <ul class="mt-0.5 space-y-0.5">
+                    ${warnings.map(w => `<li class="text-[11px] text-ink leading-snug">${escapeHtml(w)}</li>`).join('')}
+                </ul>
+            </div>
+        </div>`;
 }
 
 // Phase 2: additive `calculations` field is absent on pre-Phase-2 analyses —
@@ -528,6 +551,20 @@ async function updateContractRole(contractId, role) {
     }
 }
 
+// Portfolio rollup for the dashboard. One request instead of N analysis
+// fetches; the server aggregates from the same in-memory Maps the other
+// routes read. Returns null on failure so the caller can show an error state.
+async function fetchContractsSummary() {
+    try {
+        const response = await fetch(`${API_BASE}/contracts/summary`);
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching portfolio summary:', error);
+        return null;
+    }
+}
+
 // GET /contracts returns a summary projection only (id, name, fileName,
 // uploadDate, fileSize, status) — no `versions`, `role`, or `originalName`.
 // Anything that needs version history must fetch the full record.
@@ -693,6 +730,7 @@ function renderHeader() {
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     const navLinks = {
         upload: { text: 'Upload', active: state.currentView === 'upload' },
+        dashboard: { text: 'Portfolio', active: state.currentView === 'dashboard' },
         investor: { text: 'Investor View', active: state.currentView === 'investor' },
         legal: { text: 'Legal View', active: state.currentView === 'legal' },
         pm: { text: 'PM View', active: state.currentView === 'pm' },
@@ -844,6 +882,8 @@ function renderInvestorView() {
                     <p class="text-muted text-xs">— Last updated ${formatDate(state.currentContract.uploadDate)}</p>
                 </div>
             </div>
+
+            ${renderAnalysisWarnings(analysis)}
 
             <!-- Stats Cards -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 shrink-0">
@@ -1019,6 +1059,8 @@ function renderPartnerView() {
                     <p class="text-muted text-xs">— Overview of financial, legal, and operational signals</p>
                 </div>
             </div>
+
+            ${renderAnalysisWarnings(analysis)}
 
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
                 ${card(`
@@ -1645,6 +1687,203 @@ function copyChatMessage(index) {
 }
 
 // ---------------------------------------------------------------------------
+// Portfolio dashboard
+// ---------------------------------------------------------------------------
+
+async function loadPortfolio() {
+    state.portfolioLoading = true;
+    render();
+    const data = await fetchContractsSummary();
+    state.portfolio = data;
+    state.portfolioLoading = false;
+    render();
+}
+
+function openDashboard() {
+    state.currentView = 'dashboard';
+    render();
+    loadPortfolio();
+}
+
+function sortPortfolio(key) {
+    state.portfolioSort = key;
+    render();
+}
+
+// Nulls sort last in EVERY mode — otherwise "sort by exposure" puts the
+// contracts we know nothing about at the top of a risk-ranked list.
+function sortedPortfolioRows() {
+    const rows = (state.portfolio?.contracts || []).slice();
+    const nullsLast = (a, b, valueOf, descending = true) => {
+        const va = valueOf(a);
+        const vb = valueOf(b);
+        const aMissing = va === null || va === undefined;
+        const bMissing = vb === null || vb === undefined;
+        if (aMissing && bMissing) return 0;
+        if (aMissing) return 1;
+        if (bMissing) return -1;
+        if (va === vb) return 0;
+        return descending ? (vb - va) : (va - vb);
+    };
+
+    switch (state.portfolioSort) {
+        case 'risk':
+            return rows.sort((a, b) => nullsLast(a, b, (r) => r.lgdScore));
+        case 'name':
+            return rows.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        case 'date':
+            return rows.sort((a, b) => new Date(b.uploadDate) - new Date(a.uploadDate));
+        case 'exposure':
+        default:
+            return rows.sort((a, b) => nullsLast(a, b, (r) => r.totalPotentialLoss));
+    }
+}
+
+function portfolioStatusChip(row) {
+    if (row.status === 'analyzing') {
+        return '<span class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#B45309]/12 text-[#B45309]">Analyzing</span>';
+    }
+    if (row.status === 'error') {
+        return '<span class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#B3362B]/12 text-[#B3362B]">Failed</span>';
+    }
+    if (!row.hasAnalysis) {
+        return '<span class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-paper text-muted">No analysis</span>';
+    }
+    return '';
+}
+
+function renderDashboardView() {
+    const totals = state.portfolio?.totals;
+    const rows = sortedPortfolioRows();
+
+    if (state.portfolioLoading && !state.portfolio) {
+        return `
+            <main class="flex-1 flex items-center justify-center">
+                <div class="text-center">
+                    <div class="loading-spinner mx-auto mb-4"></div>
+                    <p class="text-muted text-sm">Loading portfolio…</p>
+                </div>
+            </main>`;
+    }
+
+    if (!state.portfolio) {
+        return `
+            <main class="flex-1 flex items-center justify-center">
+                <div class="text-center">
+                    <p class="text-muted text-sm mb-3">Could not load the portfolio summary.</p>
+                    <button class="px-4 py-2 bg-primary text-white text-xs font-bold rounded-lg" onclick="loadPortfolio()">Retry</button>
+                </div>
+            </main>`;
+    }
+
+    // Aggregates cover only analyzed contracts — say so rather than implying
+    // the totals span everything.
+    const coverage = totals.analyzedCount === totals.contractCount
+        ? `All ${totals.contractCount} contract(s)`
+        : `${totals.analyzedCount} of ${totals.contractCount} contracts analyzed`;
+
+    return `
+        <main class="flex-1 overflow-y-auto custom-scrollbar px-4 sm:px-10 py-5">
+            <div class="max-w-[1400px] mx-auto flex flex-col gap-4">
+                <div class="flex items-end justify-between gap-4 flex-wrap">
+                    <div>
+                        <h1 class="font-display text-2xl font-bold text-ink">Portfolio</h1>
+                        <p class="text-muted text-xs mt-0.5">${escapeHtml(coverage)}${totals.pendingCount > 0 ? ` · ${totals.pendingCount} still analyzing` : ''}${totals.errorCount > 0 ? ` · ${totals.errorCount} failed` : ''}</p>
+                    </div>
+                    <button class="px-3 py-1.5 border border-line rounded-lg text-[11px] font-semibold text-muted hover:text-ink" onclick="loadPortfolio()">Refresh</button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                    ${card(`
+                    <div class="flex flex-col gap-0.5 px-4 py-2.5">
+                        ${sectionLabel('Aggregate Potential Loss')}
+                        <p class="text-ink text-xl font-bold figures">${totals.totalPotentialLoss === null ? 'Not computable' : displayMoney(totals.totalPotentialLoss)}</p>
+                        <p class="text-muted text-[11px]">Across ${totals.analyzedCount} analyzed contract(s)</p>
+                    </div>`, 'stat-tile sev-critical')}
+                    ${card(`
+                    <div class="flex flex-col gap-0.5 px-4 py-2.5">
+                        ${sectionLabel('Aggregate Amount Owed')}
+                        <p class="text-ink text-xl font-bold figures">${totals.totalAmountOwed === null ? 'Not computable' : displayMoney(totals.totalAmountOwed)}</p>
+                        <p class="text-muted text-[11px]">Sum of verified obligations</p>
+                    </div>`, 'stat-tile sev-navy')}
+                    ${card(`
+                    <div class="flex flex-col gap-0.5 px-4 py-2.5">
+                        ${sectionLabel('Average Grounding Rate')}
+                        <div class="flex items-baseline gap-2">
+                            <p class="text-ink text-xl font-bold figures">${totals.averageGroundingRate === null ? 'N/A' : `${Math.round(totals.averageGroundingRate * 100)}%`}</p>
+                            ${totals.averageGroundingRate === 1 ? sealBadge('All verified') : ''}
+                        </div>
+                        <p class="text-muted text-[11px]">Amounts confirmed in source text</p>
+                    </div>`, 'stat-tile sev-clear')}
+                    ${card(`
+                    <div class="flex flex-col gap-0.5 px-4 py-2.5">
+                        ${sectionLabel('Contracts With Warnings')}
+                        <p class="text-ink text-xl font-bold figures">${totals.contractsWithWarnings}</p>
+                        <p class="text-muted text-[11px]">Analyses that degraded in some way</p>
+                    </div>`, `stat-tile ${totals.contractsWithWarnings > 0 ? 'sev-caution' : ''}`)}
+                </div>
+
+                ${card(`
+                    <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-line">
+                        ${sectionLabel('Contracts')}
+                        <div class="flex items-center gap-1">
+                            <span class="text-[10px] uppercase text-muted font-bold mr-1">Sort</span>
+                            ${['exposure', 'risk', 'date', 'name'].map((key) => `
+                                <button class="text-[11px] font-semibold px-2 py-1 rounded ${state.portfolioSort === key ? 'bg-primary/12 text-primary' : 'text-muted hover:text-ink'}" onclick="sortPortfolio('${key}')">${key.charAt(0).toUpperCase() + key.slice(1)}</button>
+                            `).join('')}
+                        </div>
+                    </div>
+                    ${rows.length === 0 ? `
+                        <p class="text-xs text-muted italic p-4">No contracts yet. Upload one to get started.</p>
+                    ` : `
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="border-b border-line">
+                                        <th class="text-[10px] uppercase tracking-wider text-muted font-bold px-4 py-2">Contract</th>
+                                        <th class="text-[10px] uppercase tracking-wider text-muted font-bold px-4 py-2 text-right">Potential Loss</th>
+                                        <th class="text-[10px] uppercase tracking-wider text-muted font-bold px-4 py-2 text-right">Amount Owed</th>
+                                        <th class="text-[10px] uppercase tracking-wider text-muted font-bold px-4 py-2 text-right">LGD</th>
+                                        <th class="text-[10px] uppercase tracking-wider text-muted font-bold px-4 py-2 text-right">Risk</th>
+                                        <th class="text-[10px] uppercase tracking-wider text-muted font-bold px-4 py-2 text-right">Flags</th>
+                                        <th class="px-4 py-2"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${rows.map((r) => `
+                                        <tr class="border-b border-line/60 hover:bg-paper cursor-pointer" onclick="openContract('${r.id}')">
+                                            <td class="px-4 py-2.5">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-sm font-bold text-ink truncate max-w-[260px]">${escapeHtml(r.name)}</span>
+                                                    ${portfolioStatusChip(r)}
+                                                    ${r.warningCount > 0 ? `<span class="material-symbols-outlined text-[#B45309] text-[14px]" title="${r.warningCount} warning(s)">warning</span>` : ''}
+                                                </div>
+                                                <span class="text-[11px] text-muted">${formatDate(r.uploadDate)} · ${formatFileSize(r.fileSize)}${r.versionCount > 1 ? ` · v${r.versionCount}` : ''}</span>
+                                            </td>
+                                            <td class="px-4 py-2.5 text-right text-sm font-bold figures ${r.totalPotentialLoss ? 'text-[#B3362B]' : 'text-muted'}">${r.totalPotentialLoss === null ? '—' : displayMoney(r.totalPotentialLoss)}</td>
+                                            <td class="px-4 py-2.5 text-right text-sm font-bold figures ${r.totalAmountOwed ? 'text-primary' : 'text-muted'}">${r.totalAmountOwed === null ? '—' : displayMoney(r.totalAmountOwed)}</td>
+                                            <td class="px-4 py-2.5 text-right text-sm figures text-ink">${r.lgdScore === null ? '—' : `${r.lgdScore}%`}</td>
+                                            <td class="px-4 py-2.5 text-right text-sm font-semibold ${riskLevelClasses(r.overallRisk)}">${r.overallRisk === null ? '—' : escapeHtml(r.overallRisk)}</td>
+                                            <td class="px-4 py-2.5 text-right text-sm figures text-ink">${r.riskCount === null ? '—' : r.riskCount}</td>
+                                            <td class="px-4 py-2.5 text-right">
+                                                <button class="size-7 grid place-items-center rounded text-muted hover:text-[#B3362B] hover:bg-[#B3362B]/10" title="Delete contract" onclick="handleDeleteContract('${r.id}', event)">
+                                                    <span class="material-symbols-outlined text-[16px]">delete</span>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="text-[11px] text-muted px-4 py-2.5 border-t border-line">A dash means the value was never computed — not zero.</p>
+                    `}
+                `, 'overflow-hidden')}
+            </div>
+        </main>
+    `;
+}
+
+// ---------------------------------------------------------------------------
 // Version comparison
 // ---------------------------------------------------------------------------
 
@@ -2218,6 +2457,11 @@ async function handleDeleteContract(contractId, event) {
 
     // fetchContracts() assigns state.contracts internally — don't reassign it.
     await fetchContracts();
+    // state.contracts and state.portfolio are two views of the same data; if
+    // only one is refreshed the deleted row lingers in the other.
+    if (state.portfolio) {
+        state.portfolio = await fetchContractsSummary();
+    }
     showToast('Contract deleted');
     render();
 }
@@ -2287,6 +2531,11 @@ async function openContract(contractId) {
 function navigateTo(view) {
     state.currentView = view;
     render();
+    // The portfolio is a live rollup — refetch whenever it's opened rather
+    // than showing whatever was cached from an earlier visit.
+    if (view === 'dashboard') {
+        loadPortfolio();
+    }
 }
 
 async function handleSendChatMessage() {
@@ -2489,6 +2738,9 @@ function render() {
             break;
         case 'report':
             content += renderReportView();
+            break;
+        case 'dashboard':
+            content += renderDashboardView();
             break;
         default:
             content += renderUploadView();
