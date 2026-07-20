@@ -13,7 +13,13 @@ const db = require('./db');
 
 function normalizeNumericSpacing(text) {
   if (!text) return '';
-  const currencyRegex = /(\$|USD|US\$|EUR|GBP|€|£)\s*\d[\d,\s]*(?:\.\d+)?\s*(?:k|m|b|thousand|million|billion)?/gi;
+  // The numeric run must START and END on a digit: `\d(?:[\d,\s]*\d)?`.
+  // The older `\d[\d,\s]*` also swallowed the whitespace AFTER the amount, so
+  // stripping spaces welded the figure to the next word ("$480, 000 for" ->
+  // "$480,000for"), and the downstream money scanner then failed to read it as
+  // one token — silently losing the amount from a PDF-extracted contract.
+  // The magnitude suffix likewise only consumes space when a suffix follows.
+  const currencyRegex = /(\$|USD|US\$|EUR|GBP|€|£)\s*\d(?:[\d,\s]*\d)?(?:\.\d+)?(?:\s*(?:k|m|b|thousand|million|billion))?/gi;
   const percentRegex = /\d[\d,\s]*(?:\.\d+)?\s*%/g;
   let normalized = text.replace(currencyRegex, (match) => match.replace(/\s+/g, ''));
   normalized = normalized.replace(percentRegex, (match) => match.replace(/\s+/g, ''));
@@ -2584,5 +2590,9 @@ module.exports = {
   countContractClauses,
   verifyLegalInsights,
   verifyPMInsights,
-  extractRiskSignals
+  extractRiskSignals,
+  // Extraction primitives — exported so the PDF-corruption regression tests can
+  // exercise the real normalizer rather than a copy that could drift from it.
+  normalizeNumericSpacing,
+  extractNumericFigures
 };
