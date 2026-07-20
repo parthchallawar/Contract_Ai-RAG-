@@ -358,11 +358,47 @@ async function revealQuoteText(quote) {
     render();
     const marked = document.getElementById('citation-highlight');
     if (marked) {
-        marked.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        scrollHighlightIntoView(marked);
     } else {
         // The quote couldn't be located in the extracted text (PDF extraction
         // can reflow it). Say so instead of appearing to do nothing.
         showToast('That quote could not be located in the extracted text.');
+    }
+}
+
+// Centres the highlight inside the extracted-text panel and brings the panel
+// itself on screen.
+//
+// Two things make this trickier than a plain scrollIntoView():
+//
+//  1. The quote lives in a `<pre>` with its own max-height + overflow-y-auto.
+//     Letting the browser scroll that inner container left it parked at
+//     scrollTop 0, so the citation opened the panel but the gold highlight
+//     stayed off-screen below and the jump looked broken. Setting scrollTop
+//     explicitly from measured rects is deterministic.
+//  2. The vendored Tailwind build generates `max-h-[320px]` ASYNCHRONOUSLY
+//     after the innerHTML write. Scroll too early and the panel is still full
+//     height (not yet scrollable), so any scrollTop we set is silently
+//     discarded. Wait for it to actually overflow before scrolling.
+function scrollHighlightIntoView(marked, triesLeft = 12) {
+    // Re-query each attempt: a re-render between frames detaches the old node.
+    const el = document.getElementById('citation-highlight') || marked;
+    if (!el || !el.isConnected) return;
+
+    const panel = el.closest('pre');
+    if (panel && panel.scrollHeight <= panel.clientHeight && triesLeft > 0) {
+        requestAnimationFrame(() => scrollHighlightIntoView(el, triesLeft - 1));
+        return;
+    }
+
+    if (panel) {
+        const panelRect = panel.getBoundingClientRect();
+        const markRect = el.getBoundingClientRect();
+        const delta = (markRect.top - panelRect.top) - (panel.clientHeight / 2) + (markRect.height / 2);
+        panel.scrollTop = Math.max(0, panel.scrollTop + delta);
+        // Bring the panel itself into view — it sits below the document
+        // preview, which is taller than the viewport.
+        panel.scrollIntoView({ block: 'center', behavior: 'smooth' });
     }
 }
 
