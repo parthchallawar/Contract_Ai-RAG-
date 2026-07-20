@@ -347,9 +347,31 @@ app.delete('/api/contracts/:id', (req, res) => {
     return res.status(404).json({ error: 'Contract not found' });
   }
 
-  // Delete file from filesystem
-  if (fs.existsSync(contract.filePath)) {
-    fs.unlinkSync(contract.filePath);
+  // Delete the current file AND every prior version's file. Version uploads
+  // snapshot the old filePath into contract.versions[] and never unlink it, so
+  // without this loop each superseded upload is orphaned in uploads/ forever.
+  // One bad path must not abort the delete — the DB rows still have to go.
+  const uploadsRoot = path.resolve(__dirname, 'uploads');
+  const filePaths = new Set(
+    [contract.filePath, ...(contract.versions || []).map((v) => v.filePath)].filter(Boolean)
+  );
+  for (const filePath of filePaths) {
+    try {
+      // Defensive: only ever unlink inside uploads/. Paths come from multer, not
+      // the request, but a corrupted/hand-edited DB row shouldn't delete anything else.
+      if (!path.resolve(filePath).startsWith(uploadsRoot)) {
+        console.warn(`[delete] Refusing to remove path outside uploads: ${filePath}`);
+        continue;
+      }
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (error) {
+      // Best-effort: on Windows the preview iframe can still hold the file open
+      // (EPERM/EBUSY). An unlink failure must NOT abort the request, or the
+      // record survives in the Maps/DB while the client sees a 500.
+      console.warn(`[delete] Could not remove file ${filePath}:`, error.message);
+    }
   }
 
   contracts.delete(req.params.id);

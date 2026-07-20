@@ -4,7 +4,7 @@ const API_BASE = '/api';
 // Application State
 const state = {
     currentView: 'upload', // upload, investor, legal, pm, partner, chat
-    selectedRole: 'Legal', // Investor, Legal, PM, Partner, HR
+    selectedRole: 'Legal', // Investor, Legal, PM, Partner
     contracts: [],
     currentContract: null,
     currentAnalysis: null,
@@ -468,6 +468,16 @@ async function updateContractRole(contractId, role) {
     }
 }
 
+// Removes the contract record, its uploaded file(s), and every persisted DB
+// row (the backend cascades). Throws on a non-2xx so the caller can toast.
+async function deleteContractAPI(contractId) {
+    const response = await fetch(`${API_BASE}/contracts/${contractId}`, { method: 'DELETE' });
+    if (!response.ok) {
+        throw new Error(`Delete failed: ${response.status}`);
+    }
+    return await response.json();
+}
+
 async function sendChatMessageAPI(contractId, message, role, history) {
     try {
         const response = await fetch(`${API_BASE}/chat`, {
@@ -574,7 +584,16 @@ async function pollAnalysis(contractId, callback) {
     const maxAttempts = 90;
     let attempts = 0;
 
+    // Staleness guard: every caller sets state.currentContract to the contract
+    // it is polling, so if that no longer matches, the user deleted it or opened
+    // a different one mid-analysis. Stop silently — do NOT invoke the callback,
+    // since callback(null) would fire a spurious "Analysis failed" toast and
+    // callback(analysis) would resurrect a deleted contract's analysis into view.
+    const isStale = () => state.currentContract?.id !== contractId;
+
     const poll = async () => {
+        if (isStale()) return;
+
         if (attempts >= maxAttempts) {
             callback(null);
             return;
@@ -582,6 +601,7 @@ async function pollAnalysis(contractId, callback) {
 
         attempts++;
         const analysis = await getAnalysis(contractId);
+        if (isStale()) return;
         if (analysis && analysis.__failed) {
             callback(null);
         } else if (analysis) {
@@ -648,7 +668,7 @@ function renderUploadView() {
                 <div class="flex flex-col gap-3 text-center md:text-left">
                     <h1 class="font-display text-ink text-4xl md:text-5xl font-bold leading-tight tracking-[-0.01em]">Contract Analysis</h1>
                     <p class="text-muted text-lg font-normal leading-normal max-w-2xl">
-                        Upload a contract to generate analysis across Investor, Legal, PM, Partner, and HR perspectives.
+                        Upload a contract to generate analysis across Investor, Legal, PM, and Partner perspectives.
                     </p>
                 </div>
 
@@ -695,14 +715,21 @@ function renderRecentFileCard(contract) {
     const iconClass = isPDF ? 'picture_as_pdf' : 'description';
 
     return card(`
-        <div class="flex items-center gap-4 p-4 cursor-pointer" onclick="openContract('${contract.id}')">
-            <div class="size-10 flex items-center justify-center bg-paper text-primary rounded-lg">
+        <div class="group flex items-center gap-4 p-4 cursor-pointer" onclick="openContract('${contract.id}')">
+            <div class="size-10 flex items-center justify-center bg-paper text-primary rounded-lg shrink-0">
                 <span class="material-symbols-outlined">${iconClass}</span>
             </div>
             <div class="flex flex-col flex-1 min-w-0">
-                <p class="text-sm font-bold text-ink truncate">${contract.name}</p>
+                <p class="text-sm font-bold text-ink truncate">${escapeHtml(contract.name)}</p>
                 <p class="text-xs text-muted">${formatDate(contract.uploadDate)} • ${formatFileSize(contract.fileSize)}</p>
             </div>
+            <button
+                class="shrink-0 size-8 grid place-items-center rounded-lg text-muted hover:text-[#B3362B] hover:bg-[#B3362B]/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                onclick="handleDeleteContract('${contract.id}', event)"
+                title="Delete contract"
+                aria-label="Delete contract">
+                <span class="material-symbols-outlined text-[18px]">delete</span>
+            </button>
         </div>
     `, 'hover:shadow-md transition-shadow');
 }
@@ -1544,18 +1571,6 @@ function renderFooter() {
     return '';
 }
 
-// Helper function
-function getRoleDescription(role) {
-    const descriptions = {
-        Investor: 'Financial exposure, ROI impact, and risk assessment',
-        Legal: 'Compliance, liability, governing law, and clause nuance',
-        PM: 'Deliverables, timelines, IP rights, and operational requirements',
-        Partner: 'Executive overview across legal, financial, and operational signals',
-        HR: 'Employment terms, confidentiality, and data privacy'
-    };
-    return descriptions[role] || 'Comprehensive contract analysis';
-}
-
 // Event Handlers
 async function selectRole(role) {
     state.selectedRole = role;
@@ -1672,6 +1687,49 @@ async function handleVersionSelected(event) {
             render();
         }
     }
+}
+
+// Delete a contract from the Recent Documents list. The whole card already has
+// an openContract onclick, so the first thing we must do is stop the event from
+// bubbling — otherwise deleting also opens the contract we just removed.
+// Only the id (a primitive) is passed in from markup; never the name.
+async function handleDeleteContract(contractId, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+
+    const contract = state.contracts.find(c => c.id === contractId);
+    const label = contract ? contract.name : 'this contract';
+    if (!confirm(`Delete "${label}"? This removes the document, its analysis, and its chat history. This cannot be undone.`)) {
+        return;
+    }
+
+    try {
+        await deleteContractAPI(contractId);
+    } catch (error) {
+        console.error('Error deleting contract:', error);
+        showToast('Could not delete the contract. Please try again.');
+        return;
+    }
+
+    // If the deleted contract was open, drop every piece of its state before
+    // re-rendering — otherwise currentContract points at an id the server no
+    // longer knows about and the analysis views render against stale data.
+    if (state.currentContract && state.currentContract.id === contractId) {
+        state.currentContract = null;
+        state.currentAnalysis = null;
+        state.chatMessages = [];
+        state.isLoading = false;
+        resetExtractedTextState();
+        state.highlightQuote = null;
+        state.currentView = 'upload';
+    }
+
+    // fetchContracts() assigns state.contracts internally — don't reassign it.
+    await fetchContracts();
+    showToast('Contract deleted');
+    render();
 }
 
 async function openContract(contractId) {

@@ -7,15 +7,26 @@
          ground regardless of the OS/browser dark-mode preference, so the
          served .txt/.pdf preview never inverts to a black background. -->
     <meta name="color-scheme" content="light">
-    <!-- Apply the saved theme before first paint so there's no light->dark flash. -->
+    <!-- Apply the theme before first paint so there's no light->dark flash.
+         An explicit choice (from the header toggle) always wins; with no saved
+         choice we follow the OS. The inferred value is deliberately NOT written
+         back to localStorage — persisting it would freeze the app on whatever
+         the OS happened to be at first load and stop it following OS changes. -->
     <script>
         (function () {
+            var theme = null;
             try {
-                var t = localStorage.getItem('theme');
-                if (t === 'dark' || t === 'light') {
-                    document.documentElement.setAttribute('data-theme', t);
-                }
+                var saved = localStorage.getItem('theme');
+                if (saved === 'dark' || saved === 'light') theme = saved;
             } catch (e) {}
+            if (!theme) {
+                try {
+                    theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                } catch (e) {
+                    theme = 'light';
+                }
+            }
+            document.documentElement.setAttribute('data-theme', theme);
         })();
     </script>
     <title>Contract Analysis</title>
