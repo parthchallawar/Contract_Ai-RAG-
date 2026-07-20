@@ -73,6 +73,64 @@ console.log('\n1. PDF numeric corruption (normalizeNumericSpacing)');
         JSON.stringify(figures.currencies));
 }
 
+console.log('\n1b. PDF layout reconstruction (renderPdfTextContent / cleanupExtractedLayout)');
+{
+    // pdf.js emits every word AND every space as a separate positioned item.
+    // transform[5] is the baseline Y; a change means a new visual line.
+    const item = (str, y, x = 0) => ({ str, transform: [1, 0, 0, 1, x, y] });
+    const page = {
+        items: [
+            item('4.', 700), item(' ', 700), item('General', 700), item(' ', 700), item('enquiries', 700),
+            item('5.', 686), item(' ', 686), item('Online', 686), item(' ', 686), item('cancellation', 686),
+        ],
+    };
+    const rendered = server.renderPdfTextContent(page);
+
+    check('items on one baseline stay on one line', /4\. General enquiries/.test(rendered),
+        JSON.stringify(rendered));
+    check('a baseline change starts a new line', rendered.split('\n').length === 2,
+        JSON.stringify(rendered));
+    check('REGRESSION: no doubled spaces (space items are not re-joined with " ")',
+        !/ {2,}/.test(rendered), JSON.stringify(rendered));
+    check('the second clause is intact on its own line',
+        rendered.split('\n')[1].trim() === '5. Online cancellation', JSON.stringify(rendered.split('\n')[1]));
+
+    // Whitespace-only items carry stray coordinates; they must not redefine
+    // where the current line sits or every page fills with phantom breaks.
+    const noisy = { items: [item('Fee', 500), item(' ', 9999), item('is', 500), item(' ', 12), item('due', 500)] };
+    check('whitespace-only items do not create phantom line breaks',
+        server.renderPdfTextContent(noisy).split('\n').length === 1,
+        JSON.stringify(server.renderPdfTextContent(noisy)));
+
+    const clean = server.cleanupExtractedLayout;
+    check('a mid-sentence hard wrap is rejoined',
+        clean('The Provider shall deliver all work\nproduct within ten days.')
+            === 'The Provider shall deliver all work product within ten days.',
+        JSON.stringify(clean('The Provider shall deliver all work\nproduct within ten days.')));
+    check('a numbered clause always starts its own line',
+        clean('...ending sentence\n5. Online cancellation facility').split('\n').length === 2,
+        JSON.stringify(clean('...ending sentence\n5. Online cancellation facility')));
+    check('a decimal sub-clause also starts its own line',
+        clean('some open text\n3.4 If Client requests Services').split('\n').length === 2,
+        JSON.stringify(clean('some open text\n3.4 If Client requests Services')));
+    check('lettered sub-items start their own line',
+        clean('open clause text\n(a) the first condition').split('\n').length === 2,
+        JSON.stringify(clean('open clause text\n(a) the first condition')));
+    check('trailing pad spaces are stripped',
+        !/ \n| $/.test(clean('Fee is due   \nNext line   ')),
+        JSON.stringify(clean('Fee is due   \nNext line   ')));
+    check('blank-line paragraph breaks are preserved (max one)',
+        clean('First para.\n\n\n\nSecond para.') === 'First para.\n\nSecond para.',
+        JSON.stringify(clean('First para.\n\n\n\nSecond para.')));
+    check('cleanupExtractedLayout is null-safe', clean('') === '' && clean(null) === '');
+
+    // The whole point of preserving structure: quotes must still verify, and
+    // an amount must survive the rejoin.
+    const doc = clean('1. FEES\nClient shall pay a total fixed fee of $480,000 for\nthe Services.');
+    check('a quote spanning a rejoined wrap still verifies',
+        server.verifyQuote('a total fixed fee of $480,000 for the Services', doc) !== null, JSON.stringify(doc));
+}
+
 console.log('\n2. Hallucinated & duplicate amount rejection (verifyMonetaryItems)');
 {
     const text = 'Client shall pay a total fixed fee of $480,000 for the Services. '

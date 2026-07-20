@@ -43,3 +43,7 @@ Thumbs.db
 # Build output
 dist/
 build/
+
+# Manually-downloaded SEC EDGAR contracts used for local testing.
+# Public-domain source data, but no reason to version it here.
+test-contracts/*.txt

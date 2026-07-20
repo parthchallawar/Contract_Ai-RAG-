@@ -43,6 +43,75 @@ function suppressPdfWarnings(action) {
   }
 }
 
+// Rebuilds page text from pdf.js text items while preserving line structure.
+//
+// Two things matter here, and getting either wrong makes the extracted text
+// unreadable (and the clause-aware chunker much worse at its job):
+//
+//  1. Spaces are their OWN items in pdf.js output — the sequence for "Page 1"
+//     is ["Page", " ", "1"]. Joining items with ' ' therefore doubles every
+//     space, which is what produced the "4.    General    enquiries" look.
+//     Items are concatenated with '' instead.
+//  2. Every item carries its position; transform[5] is the baseline Y. A change
+//     in Y means a new visual line. Without this, an entire page collapses into
+//     one run-on paragraph and numbered clauses smear together.
+function renderPdfTextContent(textContent) {
+  const LINE_TOLERANCE = 2; // same-baseline jitter, in PDF units
+  let out = '';
+  let lastY = null;
+
+  for (const item of textContent.items) {
+    const str = item.str;
+    const y = item.transform ? item.transform[5] : null;
+    // Whitespace-only items are layout padding and routinely carry stray
+    // coordinates (a spacer at y=9999 between two words on the same line).
+    // They neither trigger a line break nor redefine where the line sits —
+    // only real glyphs do.
+    const isGlyph = Boolean(str.trim());
+
+    if (isGlyph && lastY !== null && y !== null && Math.abs(y - lastY) > LINE_TOLERANCE) {
+      out += '\n';
+    }
+    out += str;
+    if (isGlyph && y !== null) lastY = y;
+  }
+
+  return out;
+}
+
+// Tidies the reconstructed layout: PDFs emit trailing pad spaces on most lines,
+// blank spacer lines, and hard-wrap every visual line — including mid-sentence.
+function cleanupExtractedLayout(text) {
+  if (!text) return '';
+  const lines = String(text)
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+/g, ' ').trim());
+
+  const merged = [];
+  for (const line of lines) {
+    if (!line) {
+      if (merged.length && merged[merged.length - 1] !== '') merged.push('');
+      continue;
+    }
+
+    const previous = merged.length ? merged[merged.length - 1] : '';
+    // A new clause/heading always starts its own line. Everything else that
+    // continues an unfinished sentence gets joined back onto the previous line,
+    // undoing the PDF's visual hard-wrap.
+    const startsBlock = /^(?:\d+(?:\.\d+)*[.)]?\s|[A-Z][A-Z\s]{3,}$|(?:ARTICLE|SECTION|EXHIBIT|SCHEDULE|ANNEX|APPENDIX)\b|[-•*]\s|\([a-z0-9]{1,3}\)\s)/.test(line);
+    const previousIsOpen = previous && !/[.:;!?]$/.test(previous) && previous !== '';
+
+    if (previous && previousIsOpen && !startsBlock) {
+      merged[merged.length - 1] = `${previous} ${line}`;
+    } else {
+      merged.push(line);
+    }
+  }
+
+  return merged.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 async function extractTextFromFile(filePath) {
   try {
     const ext = path.extname(filePath).toLowerCase();
@@ -50,9 +119,9 @@ async function extractTextFromFile(filePath) {
       const dataBuffer = fs.readFileSync(filePath);
       const data = await suppressPdfWarnings(() => pdfParse(dataBuffer, {
         pagerender: (pageData) => pageData.getTextContent({ normalizeWhitespace: true })
-          .then((textContent) => textContent.items.map(item => item.str).join(' '))
+          .then(renderPdfTextContent)
       }));
-      return normalizeNumericSpacing(data.text);
+      return normalizeNumericSpacing(cleanupExtractedLayout(data.text));
     } else if (ext === '.docx' || ext === '.doc') {
       const result = await mammoth.extractRawText({ path: filePath });
       return normalizeNumericSpacing(result.value);
@@ -2594,5 +2663,8 @@ module.exports = {
   // Extraction primitives — exported so the PDF-corruption regression tests can
   // exercise the real normalizer rather than a copy that could drift from it.
   normalizeNumericSpacing,
-  extractNumericFigures
+  extractNumericFigures,
+  extractTextFromFile,
+  renderPdfTextContent,
+  cleanupExtractedLayout
 };
