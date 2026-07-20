@@ -709,6 +709,11 @@ function renderHeader() {
                         <span class="text-ink truncate max-w-[220px]">${escapeHtml(state.currentContract.name)}</span>
                     </span>
                 ` : ''}
+                ${state.currentContract && state.currentView !== 'report' ? `
+                    <button class="theme-toggle" onclick="openReport()" title="Export report (print / save as PDF)" aria-label="Export report">
+                        <span class="material-symbols-outlined text-[19px]">print</span>
+                    </button>
+                ` : ''}
                 <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light / dark theme" aria-label="Toggle light or dark theme">
                     <span class="material-symbols-outlined text-[19px]">${isDark ? 'light_mode' : 'dark_mode'}</span>
                 </button>
@@ -1613,6 +1618,227 @@ function copyChatMessage(index) {
     copyToClipboard(msg.content || '');
 }
 
+// ---------------------------------------------------------------------------
+// Export / print report
+// ---------------------------------------------------------------------------
+
+// Opens the printable report. print() is deliberately deferred to the next
+// frame: it blocks synchronously, so calling it in the same tick as the
+// innerHTML write would open the dialog against a half-painted DOM.
+function openReport(autoPrint = true) {
+    if (!state.currentContract) return;
+    state.currentView = 'report';
+    render();
+    if (autoPrint) {
+        requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
+    }
+}
+
+function printReport() {
+    window.print();
+}
+
+// One section shell so every block prints identically and never splits a
+// heading from its body (see .report-section in the print stylesheet).
+function reportSection(title, inner, note = '') {
+    return `
+        <section class="report-section mb-8">
+            <h2 class="font-display text-lg font-bold text-ink border-b border-line pb-1.5 mb-3">${escapeHtml(title)}</h2>
+            ${note ? `<p class="text-[11px] text-muted mb-3">${escapeHtml(note)}</p>` : ''}
+            ${inner}
+        </section>`;
+}
+
+function reportRow(label, value, valueClass = '') {
+    return `
+        <div class="flex justify-between items-baseline gap-4 py-1.5 border-b border-line/60">
+            <span class="text-xs text-muted">${escapeHtml(label)}</span>
+            <span class="text-sm font-bold ${valueClass}">${value}</span>
+        </div>`;
+}
+
+function renderReportView() {
+    const contract = state.currentContract;
+    const analysis = state.currentAnalysis;
+
+    if (!contract) {
+        return `<main class="flex-1 flex items-center justify-center"><p class="text-muted text-sm">No contract selected.</p></main>`;
+    }
+    // Report opened before polling finished — say so rather than printing a
+    // page full of "Not computable".
+    if (!analysis) {
+        return `
+            <main class="flex-1 flex items-center justify-center">
+                <div class="text-center">
+                    <div class="loading-spinner mx-auto mb-4"></div>
+                    <h2 class="font-display text-xl font-bold text-ink mb-2">Analysis still running</h2>
+                    <p class="text-muted text-sm mb-4">The report can be generated once the analysis completes.</p>
+                    <button class="px-4 py-2 bg-primary text-white text-xs font-bold rounded-lg" onclick="navigateTo('upload')">Back</button>
+                </div>
+            </main>`;
+    }
+
+    const nf = analysis.numericFigures || {};
+    const grounding = analysis.calculations?.grounding;
+    const compliance = complianceDisplay(analysis);
+    const enforceability = Array.isArray(analysis.enforceabilityRisks) ? analysis.enforceabilityRisks : [];
+    const checks = Array.isArray(analysis.complianceChecks) ? analysis.complianceChecks : [];
+    const deliverables = Array.isArray(analysis.deliverables) ? analysis.deliverables : [];
+    const timelines = Array.isArray(analysis.timelines) ? analysis.timelines : [];
+    const actionItems = Array.isArray(analysis.actionItems) ? analysis.actionItems : [];
+    const warnings = Array.isArray(analysis.analysisWarnings) ? analysis.analysisWarnings : [];
+    const versionCount = (contract.versions?.length || 0) + 1;
+
+    const money = (v) => `<span class="figures">${displayMoney(Number(v))}</span>`;
+
+    return `
+        <main class="flex-1 overflow-y-auto custom-scrollbar bg-paper" id="print-report">
+            <div class="max-w-[820px] mx-auto bg-surface my-8 px-12 py-10 rounded-lg border border-line shadow-sm report-page">
+
+                <!-- Screen-only controls -->
+                <div class="no-print flex justify-between items-center mb-8 pb-4 border-b border-line">
+                    <button class="text-xs font-semibold text-muted hover:text-ink flex items-center gap-1" onclick="navigateTo('${state.selectedRole === 'Investor' ? 'investor' : state.selectedRole === 'PM' ? 'pm' : state.selectedRole === 'Partner' ? 'partner' : 'legal'}')">
+                        <span class="material-symbols-outlined text-sm">arrow_back</span> Back to analysis
+                    </button>
+                    <button class="px-4 py-2 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 flex items-center gap-1.5" onclick="printReport()">
+                        <span class="material-symbols-outlined text-sm">print</span> Print / Save as PDF
+                    </button>
+                </div>
+
+                <!-- Masthead -->
+                <header class="mb-8">
+                    <p class="text-[10px] font-bold uppercase tracking-[0.14em] text-brass mb-1">Contract Analysis Report</p>
+                    <h1 class="font-display text-3xl font-bold text-ink leading-tight">${escapeHtml(contract.originalName || contract.name)}</h1>
+                    <p class="text-xs text-muted mt-2">
+                        ${escapeHtml(state.selectedRole)} perspective ·
+                        Version ${versionCount} ·
+                        Uploaded ${formatDate(contract.uploadDate)} ·
+                        ${formatFileSize(contract.fileSize)}
+                    </p>
+                    <p class="text-[11px] text-muted mt-1">Generated ${new Date(analysis.generatedAt || Date.now()).toLocaleString()}</p>
+                </header>
+
+                ${reportSection('Financial Exposure', `
+                    ${reportRow('Total financial exposure', displayField(analysis.financialExposure))}
+                    ${reportRow('Total potential loss', money(nf.totalPotentialLoss), 'text-[#B3362B]')}
+                    ${reportRow('Total amount owed', money(nf.totalAmountOwed), 'text-primary')}
+                    ${reportRow('Loss given default (LGD)', Number.isFinite(analysis.lgdScore) ? `<span class="figures">${analysis.lgdScore}%</span>` : 'Not computable')}
+                    ${renderLgdBreakdownText(analysis) ? `<p class="text-[11px] text-muted figures mt-2">${escapeHtml(renderLgdBreakdownText(analysis))}</p>` : ''}
+                    ${analysis.calculations?.exposure?.formula ? `<p class="text-[11px] text-muted mt-1">${escapeHtml(analysis.calculations.exposure.formula)}</p>` : ''}
+                `, 'Every amount below was verified against the contract text before being counted.')}
+
+                ${grounding && grounding.total > 0 ? reportSection('Grounding', `
+                    ${reportRow('Amounts verified in source', `<span class="figures">${grounding.grounded} of ${grounding.total}</span>`, 'text-[#1E7F5C]')}
+                    ${reportRow('Rejected as unverifiable', `<span class="figures">${grounding.dropped}</span>`, grounding.dropped > 0 ? 'text-[#B45309]' : '')}
+                    ${reportRow('Grounding rate', `<span class="figures">${Math.round((grounding.rate || 0) * 100)}%</span>`)}
+                `, 'Figures the model proposed but which could not be located in the contract are excluded from all totals.') : ''}
+
+                ${(nf.risks || []).length > 0 ? reportSection('Identified Risks', `
+                    ${nf.risks.map((r) => `
+                        <div class="report-item mb-3">
+                            <div class="flex justify-between items-baseline gap-4">
+                                <span class="text-sm font-bold text-ink">${escapeHtml(r.raw)}</span>
+                                <span class="text-sm font-bold text-[#B3362B] figures">${displayMoney(Number(r.amount))}</span>
+                            </div>
+                            ${r.reason ? `<p class="text-xs text-muted">${escapeHtml(r.reason)}</p>` : ''}
+                            ${r.sourceContext ? `<p class="quote-block">"${escapeHtml(r.sourceContext)}"</p>` : ''}
+                        </div>
+                    `).join('')}
+                `) : ''}
+
+                ${(nf.obligations || []).length > 0 ? reportSection('Obligations', `
+                    ${nf.obligations.map((o) => `
+                        <div class="report-item mb-3">
+                            <div class="flex justify-between items-baseline gap-4">
+                                <span class="text-sm font-bold text-ink">${escapeHtml(o.raw)}</span>
+                                <span class="text-sm font-bold text-primary figures">${displayMoney(Number(o.amount))}</span>
+                            </div>
+                            ${o.reason ? `<p class="text-xs text-muted">${escapeHtml(o.reason)}</p>` : ''}
+                            ${o.sourceContext ? `<p class="quote-block">"${escapeHtml(o.sourceContext)}"</p>` : ''}
+                        </div>
+                    `).join('')}
+                `) : ''}
+
+                ${reportSection('Risk & Compliance', `
+                    ${reportRow('Overall risk', displayField(analysis.overallRisk, 'Not determined'), riskLevelClasses(analysis.overallRisk))}
+                    ${reportRow('Compliance score', compliance.text, compliance.cls)}
+                    ${reportRow('Clauses flagged', `<span class="figures">${enforceability.length}${Number.isFinite(analysis.totalClauses) ? ` of ${analysis.totalClauses}` : ''}</span>`)}
+                `)}
+
+                ${enforceability.length > 0 ? reportSection('Enforceability Risks', `
+                    ${enforceability.map((risk) => `
+                        <div class="report-item mb-4">
+                            <div class="flex items-baseline gap-2 mb-0.5">
+                                <span class="text-[10px] font-bold uppercase text-muted">Clause ${displayField(risk.section, '—')}</span>
+                                <span class="sev-chip crit">${escapeHtml(risk.risk || 'RISK')}</span>
+                            </div>
+                            <p class="text-sm font-bold text-ink">${escapeHtml(risk.title)}</p>
+                            <p class="text-xs text-muted mt-0.5">${escapeHtml(risk.description)}</p>
+                            ${risk.quote && risk.quote !== 'Not specified' ? `<p class="quote-block">"${escapeHtml(risk.quote)}"</p>` : ''}
+                        </div>
+                    `).join('')}
+                `) : ''}
+
+                ${checks.length > 0 ? reportSection('Compliance Checks', `
+                    ${checks.map((c) => `
+                        <div class="report-item mb-2.5">
+                            <p class="text-sm font-bold text-ink">${escapeHtml(c.name)} <span class="text-[10px] font-bold uppercase ${c.status === 'pass' ? 'text-[#1E7F5C]' : (c.status === 'unverified' ? 'text-muted' : 'text-[#B45309]')}">${escapeHtml(c.status || 'unknown')}</span></p>
+                            <p class="text-xs text-muted">${escapeHtml(c.note || '')}</p>
+                        </div>
+                    `).join('')}
+                `) : ''}
+
+                ${analysis.jurisdiction ? reportSection('Jurisdiction', `
+                    ${reportRow('Location', displayField(analysis.jurisdiction.location, 'Not determined'))}
+                    ${reportRow('Governing law', displayField(analysis.jurisdiction.governingLaw, 'Not determined'))}
+                    ${(analysis.jurisdiction.notes || []).length > 0 ? `
+                        <ul class="mt-2 space-y-1">
+                            ${analysis.jurisdiction.notes.map(n => `<li class="text-xs text-muted">• ${escapeHtml(n)}</li>`).join('')}
+                        </ul>` : ''}
+                `) : ''}
+
+                ${deliverables.length > 0 ? reportSection('Deliverables', `
+                    ${deliverables.map((d) => `
+                        <div class="report-item mb-2.5">
+                            <p class="text-sm font-bold text-ink">${escapeHtml(d.name)}</p>
+                            <p class="text-xs text-muted">Due: ${displayField(d.due, 'Not specified')}</p>
+                            ${d.quote ? `<p class="quote-block">"${escapeHtml(d.quote)}"</p>` : ''}
+                        </div>
+                    `).join('')}
+                `) : ''}
+
+                ${timelines.length > 0 ? reportSection('Timeline', `
+                    ${timelines.map((t) => `
+                        <div class="report-item mb-2.5">
+                            <p class="text-sm font-bold text-ink">${escapeHtml(t.event)}</p>
+                            <p class="text-xs text-muted figures">${displayField(t.date, 'Not specified')}</p>
+                        </div>
+                    `).join('')}
+                `) : ''}
+
+                ${actionItems.length > 0 ? reportSection('Action Items', `
+                    <ul class="space-y-1.5">
+                        ${actionItems.map((a) => `
+                            <li class="text-sm text-ink">☐ ${escapeHtml(typeof a === 'string' ? a : (a.task || a.title || ''))}${a && a.owner ? ` <span class="text-xs text-muted">— ${escapeHtml(a.owner)}</span>` : ''}</li>
+                        `).join('')}
+                    </ul>
+                `) : ''}
+
+                ${warnings.length > 0 ? reportSection('Analysis Warnings', `
+                    <ul class="space-y-1">
+                        ${warnings.map(w => `<li class="text-xs text-[#B45309]">• ${escapeHtml(w)}</li>`).join('')}
+                    </ul>
+                `, 'Parts of the pipeline degraded to safe defaults. Treat the affected sections with caution.') : ''}
+
+                <footer class="mt-10 pt-4 border-t border-line text-[10px] text-muted">
+                    Generated by ContractAI. Amounts and quotes are verified against the source document;
+                    unverifiable values are excluded rather than estimated. This is not legal advice.
+                </footer>
+            </div>
+        </main>
+    `;
+}
+
 function renderLoadingView() {
     return `
         <main class="flex-1 flex items-center justify-center">
@@ -2043,6 +2269,9 @@ function render() {
             break;
         case 'chat':
             content += renderChatView();
+            break;
+        case 'report':
+            content += renderReportView();
             break;
         default:
             content += renderUploadView();

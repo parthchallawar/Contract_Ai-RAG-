@@ -336,6 +336,73 @@
         .h-screen-minus-header-footer {
             height: calc(100vh - 120px);
         }
+
+        /* The printed report's quote blocks are plain evidence, not links. */
+        .report-page .quote-block {
+            margin-top: 0.35rem;
+        }
+
+        /* ===================== Print / PDF export =====================
+           The app shell is a fixed-height, overflow-hidden flex layout, which
+           would otherwise clip the report to a single page. Everything here
+           exists to turn that shell back into a normal flowing document. */
+        @media print {
+            /* 1. Undo the app-shell viewport lock. Without this the printout is
+                  exactly one page and the rest of the report is silently cut. */
+            html, body, #app {
+                height: auto !important;
+                overflow: visible !important;
+            }
+            #print-report {
+                overflow: visible !important;
+                background: #fff !important;
+            }
+
+            /* 2. Force the light palette regardless of the active theme, so a
+                  dark-mode user doesn't print white-on-white or black pages. */
+            :root, :root[data-theme="dark"], :root[data-theme="light"] {
+                --c-ink: 22 34 46;
+                --c-primary: 30 58 110;
+                --c-primary-600: 42 76 134;
+                --c-brass: 169 122 34;
+                --c-brass-strong: 138 100 20;
+                --c-paper: 255 255 255;
+                --c-surface: 255 255 255;
+                --c-surface2: 255 255 255;
+                --c-muted: 86 100 114;
+                --c-line: 205 214 224;
+                --c-line-strong: 176 189 203;
+                --c-critical: 179 54 43;
+                --c-caution: 181 127 20;
+                --c-clear: 46 125 91;
+            }
+            body { background: #fff !important; }
+
+            /* 3. Chrome (nav, toggles, buttons) never prints. */
+            header, .no-print, .theme-toggle, .nav-pill { display: none !important; }
+
+            /* 4. Flat paper — drop the on-screen card treatment. */
+            .report-page {
+                margin: 0 !important;
+                padding: 0 !important;
+                max-width: none !important;
+                border: 0 !important;
+                border-radius: 0 !important;
+                box-shadow: none !important;
+            }
+
+            /* 5. Keep blocks intact across page breaks. */
+            .report-section, .report-item, .quote-block { break-inside: avoid; }
+            h1, h2 { break-after: avoid; }
+
+            /* 6. Preserve the severity chips' fills, which browsers strip by default. */
+            .sev-chip, .seal {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            @page { margin: 14mm; }
+        }
     </style>
 </head>
 <body class="bg-paper text-ink min-h-screen">
