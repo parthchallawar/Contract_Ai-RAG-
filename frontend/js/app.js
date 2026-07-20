@@ -171,6 +171,28 @@ function sealBadge(text = 'Verified') {
     return `<span class="seal"><span class="material-symbols-outlined">verified</span>${escapeHtml(text)}</span>`;
 }
 
+// Demo-fidelity ledger row: a single risk/obligation/rate line with an
+// optional inline source quote and a right-aligned amount. `critical` tints
+// the row red; `amountClass` colors the figure ('crit' | 'navy' | 'muted').
+function riskLedgerRow(item, { critical = false, amountClass = 'navy' } = {}) {
+    const dup = item.possibleDuplicate
+        ? '<span class="sev-chip caution" style="text-transform:none;letter-spacing:0">possible dup</span>'
+        : '';
+    const sev = critical ? '<span class="sev-chip crit">Risk</span>' : '';
+    const meta = item.reason ? `<div class="rr-meta">${escapeHtml(item.reason)}</div>` : '';
+    const quote = item.sourceContext ? `<div class="quote-block">"${escapeHtml(item.sourceContext)}"</div>` : '';
+    const amtCls = amountClass === 'muted' ? '' : amountClass;
+    return `
+        <div class="risk-row ${critical ? 'crit' : ''}">
+            <div class="rr-body">
+                <div class="rr-title">${escapeHtml(item.raw)} ${sev} ${dup}</div>
+                ${meta}
+                ${quote}
+            </div>
+            <div class="rr-amt ${amtCls} figures">${displayMoney(Number(item.amount))}</div>
+        </div>`;
+}
+
 async function loadExtractedText() {
     if (!state.currentContract || state.isExtractedTextLoading) return;
     state.isExtractedTextLoading = true;
@@ -571,35 +593,31 @@ function renderHeader() {
     };
 
     return `
-        <header class="flex items-center justify-between whitespace-nowrap border-b border-line px-10 py-3 bg-surface sticky top-0 z-50">
-            <div class="flex items-center gap-10">
-                <div class="flex items-center gap-3 text-primary cursor-pointer" onclick="navigateTo('upload')">
-                    <div class="size-6 text-brass">
-                        <svg fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M24 45.8096C19.6865 45.8096 15.4698 44.5305 11.8832 42.134C8.29667 39.7376 5.50128 36.3314 3.85056 32.3462C2.19985 28.361 1.76794 23.9758 2.60947 19.7452C3.451 15.5145 5.52816 11.6284 8.57829 8.5783C11.6284 5.52817 15.5145 3.45101 19.7452 2.60948C23.9758 1.76795 28.361 2.19986 32.3462 3.85057C36.3314 5.50129 39.7376 8.29668 42.134 11.8833C44.5305 15.4698 45.8096 19.6865 45.8096 24L24 24L24 45.8096Z" fill="currentColor"></path>
+        <header class="flex items-center whitespace-nowrap border-b border-line px-7 h-[60px] bg-surface sticky top-0 z-50">
+            <div class="flex items-center gap-9">
+                <div class="flex items-center gap-2.5 cursor-pointer" onclick="navigateTo('upload')">
+                    <div class="brand-mark">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 3l7 3v5c0 4.4-3 8.3-7 9.5C8 19.3 5 15.4 5 11V6l7-3z" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"></path>
+                            <path d="M9 11.5l2.2 2.2L15.5 9" stroke="#D9B364" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
                         </svg>
                     </div>
-                    <h2 class="font-display text-ink text-xl font-bold leading-tight tracking-[-0.01em]">Contract Analysis</h2>
+                    <h2 class="font-display text-ink text-[19px] font-bold leading-tight">Contract<span class="text-brass">AI</span></h2>
                 </div>
                 <!-- Generated Nav Links -->
-                <nav class="hidden md:flex gap-7">
+                <nav class="hidden md:flex gap-1">
                     ${Object.entries(navLinks).map(([key, link]) => `
-                        <a onclick="navigateTo('${key}')" class="relative pb-[18px] -mb-[15px] text-sm font-medium ${link.active ? 'text-ink' : 'text-muted hover:text-ink'} cursor-pointer transition-colors">
-                            ${link.text}
-                            ${link.active ? '<span class="absolute left-0 right-0 bottom-0 h-[2px] bg-brass"></span>' : ''}
-                        </a>
+                        <a onclick="navigateTo('${key}')" class="nav-pill ${link.active ? 'on' : ''}">${link.text}</a>
                     `).join('')}
                 </nav>
             </div>
-            <div class="flex flex-1 justify-end gap-8">
-                <div class="flex items-center gap-4">
-                    ${state.currentContract ? `
-                        <div class="flex items-center gap-2 px-3 py-1.5 bg-paper border border-line rounded-full">
-                            <span class="material-symbols-outlined text-primary text-sm">description</span>
-                            <span class="text-sm font-medium text-ink truncate max-w-[200px]">${state.currentContract.name}</span>
-                        </div>
-                    ` : ''}
-                </div>
+            <div class="flex flex-1 justify-end items-center gap-3">
+                ${state.currentContract ? `
+                    <span class="file-pill">
+                        <span class="live-dot"></span>
+                        <span class="text-ink truncate max-w-[220px]">${escapeHtml(state.currentContract.name)}</span>
+                    </span>
+                ` : ''}
             </div>
         </header>
     `;
@@ -776,106 +794,28 @@ function renderInvestorView() {
                                     ${sectionLabel('Financial Breakdown')}
                                     ${renderGroundingBadge(analysis)}
                                 </div>
-                                <div class="space-y-4">
+                                <div>
                                     ${analysis.numericFigures.risks.length > 0 ? `
-                                        <div>
-                                            <p class="text-[10px] font-bold text-red-500 uppercase mb-2">Identified Risks</p>
-                                            <div class="space-y-2">
-                                                ${analysis.numericFigures.risks.map((r, idx) => `
-                                                    <div class="flex flex-col gap-1">
-                                                        <div class="flex justify-between items-start p-2 bg-red-50 rounded border border-red-100">
-                                                            <div class="min-w-0 pr-2">
-                                                                <p class="text-[11px] font-bold text-slate-900 truncate">
-                                                                    ${escapeHtml(r.raw)}
-                                                                    ${r.possibleDuplicate ? '<span class="ml-1 px-1 py-0.5 rounded bg-amber-100 text-amber-700 text-[9px] font-bold align-middle whitespace-nowrap">possible duplicate</span>' : ''}
-                                                                </p>
-                                                                <p class="text-[10px] text-slate-500 line-clamp-1">${escapeHtml(r.reason || '')}</p>
-                                                            </div>
-                                                            <div class="flex items-center gap-1 shrink-0">
-                                                                <span class="text-[11px] font-black text-[#B3362B] whitespace-nowrap figures">${displayMoney(Number(r.amount))}</span>
-                                                                ${r.sourceContext ? `<button class="text-slate-400 hover:text-primary" title="Show source" onclick="toggleSourceRow('risk-${idx}')"><span class="material-symbols-outlined text-[14px]">visibility</span></button>` : ''}
-                                                            </div>
-                                                        </div>
-                                                        ${r.sourceContext ? `<div id="src-risk-${idx}" class="hidden px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-500 italic">"${escapeHtml(r.sourceContext)}"</div>` : ''}
-                                                    </div>
-                                                `).join('')}
-                                            </div>
-                                        </div>
+                                        <div class="risk-group">Identified Risks · verified</div>
+                                        ${analysis.numericFigures.risks.map((r) => riskLedgerRow(r, { critical: true, amountClass: 'crit' })).join('')}
                                     ` : ''}
 
                                     ${analysis.numericFigures.obligations.length > 0 ? `
-                                        <div>
-                                            <p class="text-[10px] font-bold text-primary uppercase mb-2">Obligations</p>
-                                            <div class="space-y-2">
-                                                ${analysis.numericFigures.obligations.map((o, idx) => `
-                                                    <div class="flex flex-col gap-1">
-                                                        <div class="flex justify-between items-start p-2 bg-slate-50 rounded border border-slate-100">
-                                                            <div class="min-w-0 pr-2">
-                                                                <p class="text-[11px] font-bold text-slate-900 truncate">
-                                                                    ${escapeHtml(o.raw)}
-                                                                    ${o.possibleDuplicate ? '<span class="ml-1 px-1 py-0.5 rounded bg-amber-100 text-amber-700 text-[9px] font-bold align-middle whitespace-nowrap">possible duplicate</span>' : ''}
-                                                                </p>
-                                                                <p class="text-[10px] text-slate-500 line-clamp-1">${escapeHtml(o.reason || '')}</p>
-                                                            </div>
-                                                            <div class="flex items-center gap-1 shrink-0">
-                                                                <span class="text-[11px] font-black text-primary whitespace-nowrap figures">${displayMoney(Number(o.amount))}</span>
-                                                                ${o.sourceContext ? `<button class="text-slate-400 hover:text-primary" title="Show source" onclick="toggleSourceRow('obligation-${idx}')"><span class="material-symbols-outlined text-[14px]">visibility</span></button>` : ''}
-                                                            </div>
-                                                        </div>
-                                                        ${o.sourceContext ? `<div id="src-obligation-${idx}" class="hidden px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-500 italic">"${escapeHtml(o.sourceContext)}"</div>` : ''}
-                                                    </div>
-                                                `).join('')}
-                                            </div>
-                                        </div>
+                                        <div class="risk-group">Obligations</div>
+                                        ${analysis.numericFigures.obligations.map((o) => riskLedgerRow(o, { amountClass: 'navy' })).join('')}
                                     ` : ''}
 
                                     ${(analysis.numericFigures.rates || []).length > 0 ? `
-                                        <div>
-                                            <p class="text-[10px] font-bold text-slate-400 uppercase mb-2">Rates (per-unit — excluded from totals)</p>
-                                            <div class="space-y-2">
-                                                ${analysis.numericFigures.rates.map((r, idx) => `
-                                                    <div class="flex flex-col gap-1">
-                                                        <div class="flex justify-between items-start p-2 bg-slate-50 rounded border border-slate-100">
-                                                            <div class="min-w-0 pr-2">
-                                                                <p class="text-[11px] font-bold text-slate-900 truncate">${escapeHtml(r.raw)}</p>
-                                                                <p class="text-[10px] text-slate-500 line-clamp-1">${escapeHtml(r.reason || '')}</p>
-                                                            </div>
-                                                            <div class="flex items-center gap-1 shrink-0">
-                                                                <span class="text-[11px] font-black text-muted whitespace-nowrap figures">${displayMoney(Number(r.amount))}</span>
-                                                                ${r.sourceContext ? `<button class="text-slate-400 hover:text-primary" title="Show source" onclick="toggleSourceRow('rate-${idx}')"><span class="material-symbols-outlined text-[14px]">visibility</span></button>` : ''}
-                                                            </div>
-                                                        </div>
-                                                        ${r.sourceContext ? `<div id="src-rate-${idx}" class="hidden px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-500 italic">"${escapeHtml(r.sourceContext)}"</div>` : ''}
-                                                    </div>
-                                                `).join('')}
-                                            </div>
-                                        </div>
+                                        <div class="risk-group">Rates · per-unit, excluded from totals</div>
+                                        ${analysis.numericFigures.rates.map((r) => riskLedgerRow(r, { amountClass: 'muted' })).join('')}
                                     ` : ''}
 
                                     ${(analysis.numericFigures.insuranceRequirements || []).length > 0 ? `
-                                        <div>
-                                            <p class="text-[10px] font-bold text-slate-400 uppercase mb-2">Insurance requirements (excluded from exposure)</p>
-                                            <div class="space-y-2">
-                                                ${analysis.numericFigures.insuranceRequirements.map((r, idx) => `
-                                                    <div class="flex flex-col gap-1">
-                                                        <div class="flex justify-between items-start p-2 bg-slate-50 rounded border border-slate-100">
-                                                            <div class="min-w-0 pr-2">
-                                                                <p class="text-[11px] font-bold text-slate-900 truncate">${escapeHtml(r.raw)}</p>
-                                                                <p class="text-[10px] text-slate-500 line-clamp-1">${escapeHtml(r.reason || '')}</p>
-                                                            </div>
-                                                            <div class="flex items-center gap-1 shrink-0">
-                                                                <span class="text-[11px] font-black text-muted whitespace-nowrap figures">${displayMoney(Number(r.amount))}</span>
-                                                                ${r.sourceContext ? `<button class="text-slate-400 hover:text-primary" title="Show source" onclick="toggleSourceRow('insurance-${idx}')"><span class="material-symbols-outlined text-[14px]">visibility</span></button>` : ''}
-                                                            </div>
-                                                        </div>
-                                                        ${r.sourceContext ? `<div id="src-insurance-${idx}" class="hidden px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-500 italic">"${escapeHtml(r.sourceContext)}"</div>` : ''}
-                                                    </div>
-                                                `).join('')}
-                                            </div>
-                                        </div>
+                                        <div class="risk-group">Insurance · excluded from exposure</div>
+                                        ${analysis.numericFigures.insuranceRequirements.map((r) => riskLedgerRow(r, { amountClass: 'muted' })).join('')}
                                     ` : ''}
 
-                                    <div class="pt-3 border-t border-line space-y-2">
+                                    <div class="mt-3 pt-3 border-t border-line space-y-2">
                                         <div class="flex justify-between items-center">
                                             <span class="text-xs font-bold text-muted">Total Potential Loss</span>
                                             <span class="text-sm font-black text-[#B3362B] figures">${displayMoney(analysis.numericFigures.totalPotentialLoss)}</span>
@@ -884,7 +824,7 @@ function renderInvestorView() {
                                             <span class="text-xs font-bold text-muted">Total Amount Owed</span>
                                             <span class="text-sm font-black text-primary figures">${displayMoney(analysis.numericFigures.totalAmountOwed)}</span>
                                         </div>
-                                        <div class="flex justify-between items-center p-2 bg-ink rounded-lg">
+                                        <div class="flex justify-between items-center p-2.5 bg-ink rounded-lg">
                                             <span class="text-xs font-bold text-white/70">LGD Percentage</span>
                                             <span class="text-sm font-black text-white figures">${Number.isFinite(analysis.lgdScore) ? `${analysis.lgdScore}%` : 'Not computable'}</span>
                                         </div>

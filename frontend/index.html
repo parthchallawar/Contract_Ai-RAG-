@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Keep the app (and the raw-file iframe preview) rendering on a light
+         ground regardless of the OS/browser dark-mode preference, so the
+         served .txt/.pdf preview never inverts to a black background. -->
+    <meta name="color-scheme" content="light">
     <title>Contract Analysis</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%23C9A227' stroke-width='2'/%3E%3Cpath d='M10 16.5l4 4 8-9' fill='none' stroke='%232C4F7C' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
     <script src="/vendor/tailwind.js"></script>
@@ -128,6 +132,65 @@
         .stat-tile.sev-navy::before     { background: #1E3A6E; }
         .stat-tile.sev-clear::before    { background: #2E7D5B; }
         .stat-tile > * { padding-left: 0.65rem; }
+        .stat-tile { transition: box-shadow .18s ease, transform .18s ease; }
+        .stat-tile:hover { box-shadow: 0 1px 2px rgba(22,34,46,.06), 0 10px 26px -14px rgba(22,34,46,.28); transform: translateY(-1px); }
+
+        /* ============ Demo-fidelity component system ============ */
+        /* Header brand mark — navy rounded square holding the logo glyph. */
+        .brand-mark {
+            width: 34px; height: 34px; border-radius: 9px;
+            background: #1E3A6E; display: grid; place-items: center;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,.12);
+            color: #fff;
+        }
+        /* Header nav pills — active = navy text on a navy tint chip. */
+        .nav-pill {
+            padding: 8px 13px; border-radius: 8px; font-size: 13.5px; font-weight: 500;
+            color: #566472; transition: background .15s, color .15s; cursor: pointer;
+        }
+        .nav-pill:hover { color: #16222E; background: #FAFBFD; }
+        .nav-pill.on { color: #1E3A6E; background: #EAF0FA; font-weight: 600; }
+        /* File pill on the right of the bar. */
+        .file-pill {
+            display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px;
+            border: 1px solid #E3E8EF; border-radius: 999px; background: #FAFBFD;
+            font-size: 12.5px; font-weight: 500;
+        }
+        .live-dot { width: 7px; height: 7px; border-radius: 50%; background: #2E7D5B; box-shadow: 0 0 0 3px #E5F3EC; }
+
+        /* Panel — the rounded, shadowed surface the demo used everywhere. */
+        .panel { background: #fff; border: 1px solid #E3E8EF; border-radius: 12px;
+            box-shadow: 0 1px 2px rgba(22,34,46,.05), 0 8px 24px -14px rgba(22,34,46,.18); overflow: hidden; }
+        .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+            padding: 13px 16px; border-bottom: 1px solid #E3E8EF; }
+        .panel-head h3 { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; margin: 0; }
+
+        /* Risk / obligation rows — grouped ledger rows with a quote block. */
+        .risk-group { font-size: 10px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase;
+            color: #8A98A6; margin: 6px 2px 9px; display: flex; align-items: center; gap: 8px; }
+        .risk-group::after { content: ""; flex: 1; height: 1px; background: #E3E8EF; }
+        .risk-row { display: flex; gap: 10px; padding: 11px; border: 1px solid #E3E8EF; border-radius: 9px;
+            margin-bottom: 9px; background: #fff; transition: box-shadow .15s ease; }
+        .risk-row:hover { box-shadow: 0 6px 18px -12px rgba(22,34,46,.3); }
+        .risk-row.crit { background: #FBEBE9; border-color: rgba(179,54,43,.24); }
+        .risk-row .rr-body { min-width: 0; flex: 1; }
+        .risk-row .rr-title { font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 6px; color: #16222E; }
+        .risk-row .rr-meta { font-size: 11.5px; color: #566472; margin-top: 3px; line-height: 1.45; }
+        .risk-row .rr-amt { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 13px; white-space: nowrap; }
+        .rr-amt.crit { color: #B3362B; }
+        .rr-amt.navy { color: #1E3A6E; }
+        .sev-chip { font-size: 9.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+            padding: 1.5px 6px; border-radius: 4px; color: #fff; }
+        .sev-chip.crit { background: #B3362B; }
+        .sev-chip.caution { background: #B57F14; }
+        .sev-chip.navy { background: #1E3A6E; }
+        .quote-block { font-style: italic; color: #566472; font-size: 11px; background: #FAFBFD;
+            border-left: 2px solid #A97A22; padding: 6px 9px; border-radius: 0 5px 5px 0; margin-top: 6px;
+            font-family: "Source Serif 4", Georgia, serif; }
+
+        /* Document frame — the "paper" wrapper around the real file. */
+        .doc-frame { background: #fff; border: 1px solid #E3E8EF; border-radius: 8px;
+            box-shadow: 0 4px 18px -10px rgba(22,34,46,.22); overflow: hidden; }
         .custom-scrollbar::-webkit-scrollbar {
             width: 6px;
         }
